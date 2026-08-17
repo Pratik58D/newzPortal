@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+import cors from "cors";
 import db_connect from "./src/config/db.js";
 import userRouter from "./src/routes/user.routes.js";
 import cookieParser from "cookie-parser";
@@ -16,12 +17,18 @@ const Port = process.env.port;
 
 cloudinary;
 
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    credentials: true,
+  })
+);
 app.use(express.json())
 app.use(cookieParser());
 
 
 app.get("/",(req,res)=>{
-    res.send("testing the newsportal")
+    res.send("Newsportal is live");
 })
 
 
