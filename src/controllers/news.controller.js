@@ -32,7 +32,7 @@ export const createNews = async (req, res) => {
       title,
       slug,
       category,
-      images: imageUrls,
+      media: { type: "image", images: imageUrls },
       description,
       date,
     });
@@ -72,7 +72,7 @@ export const updateNews = async (req, res) => {
 
     if (files && files.length > 0) {
       const imageUrls = await uploadToCloudinary(files);
-      updateFields.images = imageUrls;
+      updateFields.media = { type: "image", images: imageUrls };
     }
 
     const updatedNews = await newsModel.findByIdAndUpdate(
@@ -103,7 +103,7 @@ export const deleteNews = async (req, res) => {
     //  Delete images from Cloudinary if stored there
     // You would need to store Cloudinary public_ids in your news.images array for this
 
-    for (const imageUrl of news.images) {
+    for (const imageUrl of news.media?.images || []) {
       const publicId = extractPublicId(imageUrl);
       await cloudinary.uploader.destroy(publicId);
     }
@@ -183,7 +183,7 @@ export const getNewsBySlug = async (req, res) => {
       return res.status(404).json({ message: "News article not found" });
     }
 
-    return res.json({ success: true, data: { ...news, comments } });
+    return res.json({ success: true, data: news });
   } catch (error) {
     return res
       .status(500)
