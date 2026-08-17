@@ -1,6 +1,81 @@
 import userModel from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { paginate } from "../utilies/paginate.js";
+
+// superadmin only: list all staff accounts
+export const getAllUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    // password has select:false on the schema, so it's excluded by default
+    const result = await paginate(userModel, {}, { page, limit, sort: { createdAt: -1 } });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("error in getAllUsers Controller", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// superadmin only: update another user's role, password and/or active status
+// (all optional, at least one required). Staff accounts are never hard-deleted -
+// deactivating (isActive: false) blocks login/access while keeping their name
+// correctly attached to every article they've authored.
+export const updateUser = async (req, res) => {
+  try {
+    const { role: newRole, newPassword, isActive } = req.body;
+    const allowedRoles = ["editor", "admin", "superadmin"];
+
+    if (newRole === undefined && newPassword === undefined && isActive === undefined) {
+      return res
+        .status(400)
+        .json({ message: "Provide role, newPassword and/or isActive to update" });
+    }
+    if (newRole && !allowedRoles.includes(newRole)) {
+      return res
+        .status(400)
+        .json({ message: `role must be one of: ${allowedRoles.join(", ")}` });
+    }
+    if (newPassword && newPassword.length < 6) {
+      return res
+        .status(400)
+        .json({ message: "New password must be at least 6 characters long" });
+    }
+
+    const targetUser = await userModel.findById(req.params.id);
+    if (!targetUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // never let the last active superadmin be demoted or deactivated -
+    // that would leave nobody able to manage staff accounts at all
+    const wasActiveSuperadmin = targetUser.role === "superadmin" && targetUser.isActive;
+    const wouldLoseSuperadminStatus =
+      wasActiveSuperadmin &&
+      ((newRole && newRole !== "superadmin") || isActive === false);
+    if (wouldLoseSuperadminStatus) {
+      const activeSuperadmins = await userModel.countDocuments({
+        role: "superadmin",
+        isActive: true,
+      });
+      if (activeSuperadmins <= 1) {
+        return res
+          .status(400)
+          .json({ message: "Cannot remove the last active superadmin" });
+      }
+    }
+
+    if (newRole) targetUser.role = newRole;
+    if (isActive !== undefined) targetUser.isActive = isActive;
+    if (newPassword) targetUser.password = await bcrypt.hash(newPassword, 10);
+
+    await targetUser.save();
+
+    res.json({ success: true, message: "User updated successfully" });
+  } catch (error) {
+    console.error("error in updateUser Controller", error.message);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 
 export const createUser = async (req, res) => {
   try {
@@ -80,6 +155,9 @@ export const loginUser = async (req, res) => {
     const matchedUser = await userModel.findOne({ email }).select('+password');
     if (!matchedUser) {
       return res.status(400).json({ success: false, message: "Invalid email" });
+    }
+    if (!matchedUser.isActive) {
+      return res.status(403).json({ success: false, message: "This account has been deactivated" });
     }
     const isPasswordCorrect = await bcrypt.compare(
       password,

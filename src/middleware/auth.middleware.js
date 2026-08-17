@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
+import userModel from "../models/user.model.js";
 
-export const authMiddleware = (req, res, next) => {
+export const authMiddleware = async (req, res, next) => {
   const token = req.cookies.token;
   if (!token) {
     return res
@@ -14,7 +15,17 @@ export const authMiddleware = (req, res, next) => {
         .status(401)
         .json({ success: false, message: "Unauthorized user!" });
     }
-    req.user = decodeToken;
+
+    // re-check against the DB on every request so a deactivated account or
+    // role change takes effect immediately, not just after the JWT expires
+    const currentUser = await userModel.findById(decodeToken.id);
+    if (!currentUser || !currentUser.isActive) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Unauthorized user!" });
+    }
+
+    req.user = { id: currentUser._id.toString(), role: currentUser.role, email: currentUser.email };
     next();
   } catch (error) {
     console.log("error in auth middleware", error.message);
