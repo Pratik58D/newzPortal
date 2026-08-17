@@ -4,9 +4,12 @@ import {
   extractPublicId,
   uploadToCloudinary,
 } from "../utilies/imageHandling.js";
+import { paginate } from "../utilies/paginate.js";
 import Category from "../models/category.model.js";
 
-// Admin: CREATE
+// Staff (editor/admin/superadmin): CREATE
+// - editor-created articles start as "draft" and go through review
+// - admin/superadmin-created articles are auto-approved
 
 export const createNews = async (req, res) => {
   try {
@@ -28,13 +31,16 @@ export const createNews = async (req, res) => {
     console.log(slug);
 
     const imageUrls = await uploadToCloudinary(files);
+    const isSelfPublisher = ["admin", "superadmin"].includes(req.user.role);
     const news = new newsModel({
       title,
       slug,
       category,
+      author: req.user.id,
       media: { type: "image", images: imageUrls },
       description,
       date,
+      status: isSelfPublisher ? "approved" : "draft",
     });
     await news.save();
     res
@@ -45,11 +51,26 @@ export const createNews = async (req, res) => {
   }
 };
 
-//  Admin: UPDATE
+//  Staff: UPDATE
+// editors may only edit their own draft/rejected articles; admin/superadmin may edit anything
 export const updateNews = async (req, res) => {
   try {
+    const existingNews = await newsModel.findById(req.params.id);
+    if (!existingNews) {
+      return res.status(404).json({ message: "News not found" });
+    }
+
+    if (req.user.role === "editor") {
+      const isOwner = existingNews.author?.equals(req.user.id);
+      const isEditable = ["draft", "rejected"].includes(existingNews.status);
+      if (!isOwner || !isEditable) {
+        return res.status(403).json({
+          message: "You can only edit your own draft or rejected articles",
+        });
+      }
+    }
+
     const { title, category, description, date, status } = req.body;
-    const files = req.files;
     const updateFields = { title, category, description, date, status };
 
     if (title) {
@@ -70,6 +91,7 @@ export const updateNews = async (req, res) => {
       updateFields.category = categoryDoc._id;
     }
 
+    const files = req.files;
     if (files && files.length > 0) {
       const imageUrls = await uploadToCloudinary(files);
       updateFields.media = { type: "image", images: imageUrls };
@@ -86,6 +108,106 @@ export const updateNews = async (req, res) => {
     res.json({ success: true, data: updatedNews });
   } catch (error) {
     res.status(500).json({ message: "Update failed", error: error.message });
+  }
+};
+
+// Editor (author only) / admin / superadmin: submit a draft or rejected article for review
+export const submitNews = async (req, res) => {
+  try {
+    const news = await newsModel.findById(req.params.id);
+    if (!news) {
+      return res.status(404).json({ message: "News not found" });
+    }
+
+    const isOwner = news.author?.equals(req.user.id);
+    const isSelfPublisher = ["admin", "superadmin"].includes(req.user.role);
+    if (!isOwner && !isSelfPublisher) {
+      return res.status(403).json({ message: "You can only submit your own articles" });
+    }
+
+    if (!["draft", "rejected"].includes(news.status)) {
+      return res
+        .status(400)
+        .json({ message: "Only draft or rejected articles can be submitted" });
+    }
+
+    news.status = "pending";
+    news.rejectionReason = undefined;
+    await news.save();
+
+    res.json({ success: true, data: news });
+  } catch (error) {
+    res.status(500).json({ message: "Submit failed", error: error.message });
+  }
+};
+
+// Admin/superadmin: approve a pending article
+export const approveNews = async (req, res) => {
+  try {
+    const news = await newsModel.findById(req.params.id);
+    if (!news) {
+      return res.status(404).json({ message: "News not found" });
+    }
+    if (news.status !== "pending") {
+      return res.status(400).json({ message: "Only pending articles can be approved" });
+    }
+
+    news.status = "approved";
+    news.rejectionReason = undefined;
+    await news.save();
+
+    res.json({ success: true, data: news });
+  } catch (error) {
+    res.status(500).json({ message: "Approve failed", error: error.message });
+  }
+};
+
+// Admin/superadmin: reject a pending article, optionally with a reason
+export const rejectNews = async (req, res) => {
+  try {
+    const news = await newsModel.findById(req.params.id);
+    if (!news) {
+      return res.status(404).json({ message: "News not found" });
+    }
+    if (news.status !== "pending") {
+      return res.status(400).json({ message: "Only pending articles can be rejected" });
+    }
+
+    news.status = "rejected";
+    news.rejectionReason = req.body.rejectionReason || undefined;
+    await news.save();
+
+    res.json({ success: true, data: news });
+  } catch (error) {
+    res.status(500).json({ message: "Reject failed", error: error.message });
+  }
+};
+
+// Staff: moderation queue / "my articles" view - any status, filtered by ownership for editors
+export const getManageNews = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status } = req.query;
+    const query = {};
+    if (req.user.role === "editor") {
+      query.author = req.user.id;
+    }
+    if (status) {
+      query.status = status;
+    }
+
+    const result = await paginate(newsModel, query, {
+      page,
+      limit,
+      sort: { createdAt: -1 },
+      populate: [
+        { path: "category", select: "name slug" },
+        { path: "author", select: "name email role" },
+      ],
+    });
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to get news", error: error.message });
   }
 };
 
@@ -124,8 +246,7 @@ export const getNews = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search || "";
 
-    // const query = { status: "approved" };   // only approved news
-    const query = {};
+    const query = { status: "approved" }; // only approved news is public
     const skip = (page - 1) * limit;
 
     if (search) {

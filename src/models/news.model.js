@@ -16,6 +16,11 @@ const newsArticleSchema = new mongoose.Schema({
     ref: "Category",
     required: true,
   },
+  author: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
   description: {
     type: String,
     default: "",
@@ -51,8 +56,11 @@ const newsArticleSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["pending", "approved", "rejected"],
+    enum: ["draft", "pending", "approved", "rejected"],
     default: "pending",
+  },
+  rejectionReason: {
+    type: String,
   },
   view: {
     type: Number,

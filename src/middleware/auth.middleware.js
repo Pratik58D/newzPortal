@@ -40,9 +40,19 @@ export const isSuperAdmin = (req, res, next) => {
 // both admin and superadmin allowed
 
 export const role = async (req, res, next) => {
- 
+
   if (req.user?.role === "admin" || req.user?.role === "superadmin") {
-    next(); 
+    next();
+  } else {
+    return res.status(401).json({ message: "unable to access this api" });
+  }
+};
+
+
+// any logged-in staff account (editor, admin, superadmin)
+export const staffOnly = (req, res, next) => {
+  if (["editor", "admin", "superadmin"].includes(req.user?.role)) {
+    return next();
   } else {
     return res.status(401).json({ message: "unable to access this api" });
   }

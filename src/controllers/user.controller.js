@@ -25,10 +25,11 @@ export const createUser = async (req, res) => {
         .json({ error: "Password must be at least 6 characters long" });
     }
 
-     // Only superadmin can set roles other than 'user'
-    let userRole = "user";
-    if (role && ["admin", "superadmin"].includes(role)) {
-      if (req.user?.role !== "superadmin") {
+     // Only superadmin can assign admin/superadmin; anything else falls back to the model's default staff role
+    const allowedRoles = ["editor", "admin", "superadmin"];
+    let userRole = "editor";
+    if (role && allowedRoles.includes(role)) {
+      if (["admin", "superadmin"].includes(role) && req.user?.role !== "superadmin") {
         return res.status(403).json({
           message: "Only superadmin can assign admin or superadmin role",
         });
