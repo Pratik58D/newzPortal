@@ -1,7 +1,11 @@
 export class ApiError extends Error {
-  constructor(status, message, cause) {
+  constructor(statusCode, message, cause) {
     super(message);
-    this.status = status;
-    if (cause) this.cause = cause; // keeps the original error for server-side logging
+    this.name = "ApiError";
+    this.statusCode = statusCode;
+
+    if (cause) {
+      this.cause = cause;
+    }
   }
 }

@@ -3,73 +3,55 @@ import Category from "../models/category.model.js";
 import newsModel from "../models/news.model.js";
 import { paginate } from "../utilies/paginate.js";
 import { asyncHandler } from "../utilies/asyncHandler.js";
-import { ApiError } from "../utilies/ApiError.js";
 
 // Create new category
 export const createCategory = asyncHandler(async (req, res) => {
-  try {
-    const { name, province } = req.body;
-    if (!name) {
-      return res.status(400).json({ message: "Category name is required" });
-    }
-    const existing = await Category.findOne({ name });
-    if (existing) {
-      return res.status(409).json({ message: "Category already exists" });
-    }
-    const slug = slugify(name, { lower: true, strict: true });
-
-    const newCategory = new Category({
-      name,
-      slug,
-      province: province || null,
-    });
-    await newCategory.save();
-    res.status(201).json({ success: true, data: newCategory });
-  } catch (error) {
-    throw new ApiError(500, "Failed to create category", error);
+  const { name, province } = req.body;
+  if (!name) {
+    return res.status(400).json({ message: "Category name is required" });
   }
+  const existing = await Category.findOne({ name });
+  if (existing) {
+    return res.status(409).json({ message: "Category already exists" });
+  }
+  const slug = slugify(name, { lower: true, strict: true });
+
+  const newCategory = new Category({
+    name,
+    slug,
+    province: province || null,
+  });
+  await newCategory.save();
+  res.status(201).json({ success: true, data: newCategory });
 });
 
 // Delete category (admin only)
 export const deleteCategory = asyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    await Category.findByIdAndDelete(id);
-    res.json({ success: true, message: "Category deleted" });
-  } catch (error) {
-    throw new ApiError(500, "Error deleting category", error);
-  }
+  const { id } = req.params;
+  await Category.findByIdAndDelete(id);
+  res.json({ success: true, message: "Category deleted" });
 });
 
 // Get all categories
 export const getAllCategories = asyncHandler(async (req, res) => {
-  try {
-    const categories = await Category.find().sort({ createdAt: -1 });
-    res.json({ success: true, categories });
-  } catch (error) {
-    throw new ApiError(500, "Error fetching categories", error);
-  }
+  const categories = await Category.find().sort({ createdAt: -1 });
+  res.json({ success: true, categories });
 });
 
 // Get single category by slug
 export const getCategoryBySlug = asyncHandler(async (req, res) => {
-  try {
-    const { slug } = req.params;
-    const category = await Category.findOne({ slug });
+  const { slug } = req.params;
+  const category = await Category.findOne({ slug });
 
-    if (!category) {
-      return res.status(404).json({ message: "Category not found" });
-    }
-
-    res.json({ success: true, category });
-  } catch (error) {
-    throw new ApiError(500, "Error fetching category", error);
+  if (!category) {
+    return res.status(404).json({ message: "Category not found" });
   }
+
+  res.json({ success: true, category });
 });
 
 //searching and sorting categories
 export const searchCategories = asyncHandler(async (req, res) => {
-  try {
     const { search, province, page = 1, limit = 10 } = req.query;
 
     const query = {};
@@ -115,14 +97,11 @@ export const searchCategories = asyncHandler(async (req, res) => {
       })
     );
 
-    res.json({
-      success: true,
-      page: categoriesPaginated.page,
-      totalPages: categoriesPaginated.totalPages,
-      totalCategories: categoriesPaginated.totalItems,
-      data: categoriesWithNews,
-    });
-  } catch (error) {
-    throw new ApiError(500, "Search failed", error);
-  }
+  res.json({
+    success: true,
+    page: categoriesPaginated.page,
+    totalPages: categoriesPaginated.totalPages,
+    totalCategories: categoriesPaginated.totalItems,
+    data: categoriesWithNews,
+  });
 });
