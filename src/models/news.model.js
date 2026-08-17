@@ -23,7 +23,7 @@ const newsArticleSchema = new mongoose.Schema({
   media :{
     type : {
       type : String,
-      emum : ["image" , "video"],
+      enum : ["image" , "video"],
       required : true
     },
 
