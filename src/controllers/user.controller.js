@@ -2,7 +2,7 @@ import userModel from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-export const registerUser = async (req, res) => {
+export const createUser = async (req, res) => {
   try {
    const { name, email, password, role } = req.body;
 
@@ -50,7 +50,7 @@ export const registerUser = async (req, res) => {
       message: "User created successfully",
     });
   } catch (error) {
-    console.error("error in signUp Controller", error.message);
+    console.error("error in createUser Controller", error.message);
     return res.status(500).json({
       message: "server Error",
       success: false,
