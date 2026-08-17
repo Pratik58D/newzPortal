@@ -2,25 +2,26 @@ import userModel from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { paginate } from "../utilies/paginate.js";
+import { asyncHandler } from "../utilies/asyncHandler.js";
+import { ApiError } from "../utilies/ApiError.js";
 
 // superadmin only: list all staff accounts
-export const getAllUsers = async (req, res) => {
+export const getAllUsers = asyncHandler(async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     // password has select:false on the schema, so it's excluded by default
     const result = await paginate(userModel, {}, { page, limit, sort: { createdAt: -1 } });
     res.json({ success: true, ...result });
   } catch (error) {
-    console.error("error in getAllUsers Controller", error.message);
-    res.status(500).json({ success: false, message: "Server error" });
+    throw new ApiError(500, "Failed to fetch users", error);
   }
-};
+});
 
 // superadmin only: update another user's role, password and/or active status
 // (all optional, at least one required). Staff accounts are never hard-deleted -
 // deactivating (isActive: false) blocks login/access while keeping their name
 // correctly attached to every article they've authored.
-export const updateUser = async (req, res) => {
+export const updateUser = asyncHandler(async (req, res) => {
   try {
     const { role: newRole, newPassword, isActive } = req.body;
     const allowedRoles = ["editor", "admin", "superadmin"];
@@ -72,12 +73,11 @@ export const updateUser = async (req, res) => {
 
     res.json({ success: true, message: "User updated successfully" });
   } catch (error) {
-    console.error("error in updateUser Controller", error.message);
-    res.status(500).json({ success: false, message: "Server error" });
+    throw new ApiError(500, "Failed to update user", error);
   }
-};
+});
 
-export const createUser = async (req, res) => {
+export const createUser = asyncHandler(async (req, res) => {
   try {
    const { name, email, password, role } = req.body;
 
@@ -126,17 +126,13 @@ export const createUser = async (req, res) => {
       message: "User created successfully",
     });
   } catch (error) {
-    console.error("error in createUser Controller", error.message);
-    return res.status(500).json({
-      message: "server Error",
-      success: false,
-    });
+    throw new ApiError(500, "Failed to create user", error);
   }
-};
+});
 
 //login controller
 
-export const loginUser = async (req, res) => {
+export const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   try {
     if (!email || !password) {
@@ -199,22 +195,20 @@ export const loginUser = async (req, res) => {
         },
       });
   } catch (error) {
-    console.log("error in login controller", error.message);
-    res.status(500).json({ sucess: false, message: "Server error" });
+    throw new ApiError(500, "Login failed", error);
   }
-};
+});
 
 
 //logout controller
 
-export const logout = async (req, res) => {
+export const logout = asyncHandler(async (req, res) => {
   try {
     res.clearCookie("token");
     res
       .status(200)
       .json({ success: true, message: "User logged out sucessfully" });
   } catch (error) {
-    console.log("error in logout controller", error.message);
-    res.status(500).json({ sucess: false, message: "Server error" });
+    throw new ApiError(500, "Logout failed", error);
   }
-};
+});

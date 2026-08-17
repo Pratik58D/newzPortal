@@ -6,12 +6,14 @@ import {
 } from "../utilies/imageHandling.js";
 import { paginate } from "../utilies/paginate.js";
 import Category from "../models/category.model.js";
+import { asyncHandler } from "../utilies/asyncHandler.js";
+import { ApiError } from "../utilies/ApiError.js";
 
 // Staff (editor/admin/superadmin): CREATE
 // - editor-created articles start as "draft" and go through review
 // - admin/superadmin-created articles are auto-approved
 
-export const createNews = async (req, res) => {
+export const createNews = asyncHandler(async (req, res) => {
   try {
     const { title, category, description, date } = req.body;
     const files = req.files;
@@ -47,13 +49,13 @@ export const createNews = async (req, res) => {
       .status(201)
       .json({ success: true, message: "News created", data: news });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    throw new ApiError(500, "Failed to create news", error);
   }
-};
+});
 
 //  Staff: UPDATE
 // editors may only edit their own draft/rejected articles; admin/superadmin may edit anything
-export const updateNews = async (req, res) => {
+export const updateNews = asyncHandler(async (req, res) => {
   try {
     const existingNews = await newsModel.findById(req.params.id);
     if (!existingNews) {
@@ -107,12 +109,12 @@ export const updateNews = async (req, res) => {
 
     res.json({ success: true, data: updatedNews });
   } catch (error) {
-    res.status(500).json({ message: "Update failed", error: error.message });
+    throw new ApiError(500, "Update failed", error);
   }
-};
+});
 
 // Editor (author only) / admin / superadmin: submit a draft or rejected article for review
-export const submitNews = async (req, res) => {
+export const submitNews = asyncHandler(async (req, res) => {
   try {
     const news = await newsModel.findById(req.params.id);
     if (!news) {
@@ -137,12 +139,12 @@ export const submitNews = async (req, res) => {
 
     res.json({ success: true, data: news });
   } catch (error) {
-    res.status(500).json({ message: "Submit failed", error: error.message });
+    throw new ApiError(500, "Submit failed", error);
   }
-};
+});
 
 // Admin/superadmin: approve a pending article
-export const approveNews = async (req, res) => {
+export const approveNews = asyncHandler(async (req, res) => {
   try {
     const news = await newsModel.findById(req.params.id);
     if (!news) {
@@ -158,12 +160,12 @@ export const approveNews = async (req, res) => {
 
     res.json({ success: true, data: news });
   } catch (error) {
-    res.status(500).json({ message: "Approve failed", error: error.message });
+    throw new ApiError(500, "Approve failed", error);
   }
-};
+});
 
 // Admin/superadmin: reject a pending article, optionally with a reason
-export const rejectNews = async (req, res) => {
+export const rejectNews = asyncHandler(async (req, res) => {
   try {
     const news = await newsModel.findById(req.params.id);
     if (!news) {
@@ -179,12 +181,12 @@ export const rejectNews = async (req, res) => {
 
     res.json({ success: true, data: news });
   } catch (error) {
-    res.status(500).json({ message: "Reject failed", error: error.message });
+    throw new ApiError(500, "Reject failed", error);
   }
-};
+});
 
 // Staff: moderation queue / "my articles" view - any status, filtered by ownership for editors
-export const getManageNews = async (req, res) => {
+export const getManageNews = asyncHandler(async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
     const query = {};
@@ -207,12 +209,12 @@ export const getManageNews = async (req, res) => {
 
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ message: "Failed to get news", error: error.message });
+    throw new ApiError(500, "Failed to get news", error);
   }
-};
+});
 
 // admin :delete
-export const deleteNews = async (req, res) => {
+export const deleteNews = asyncHandler(async (req, res) => {
   try {
     const newsId = req.params.id;
 
@@ -234,13 +236,13 @@ export const deleteNews = async (req, res) => {
 
     res.json({ success: true, message: "News deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Delete failed", error: error.message });
+    throw new ApiError(500, "Delete failed", error);
   }
-};
+});
 
 //public :Get paginated news with comments and category
 
-export const getNews = async (req, res) => {
+export const getNews = asyncHandler(async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -280,14 +282,12 @@ export const getNews = async (req, res) => {
       data: newsList,
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to get news", error: error.message });
+    throw new ApiError(500, "Failed to get news", error);
   }
-};
+});
 
 //  Get one news article by slug (with category and comments)
-export const getNewsBySlug = async (req, res) => {
+export const getNewsBySlug = asyncHandler(async (req, res) => {
   try {
     const { slug } = req.params;
     const news = await newsModel
@@ -306,8 +306,6 @@ export const getNewsBySlug = async (req, res) => {
 
     return res.json({ success: true, data: news });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to get news article", error: error.message });
+    throw new ApiError(500, "Failed to get news article", error);
   }
-};
+});

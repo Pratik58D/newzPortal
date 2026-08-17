@@ -2,9 +2,11 @@ import slugify from "slugify";
 import Category from "../models/category.model.js";
 import newsModel from "../models/news.model.js";
 import { paginate } from "../utilies/paginate.js";
+import { asyncHandler } from "../utilies/asyncHandler.js";
+import { ApiError } from "../utilies/ApiError.js";
 
 // Create new category
-export const createCategory = async (req, res) => {
+export const createCategory = asyncHandler(async (req, res) => {
   try {
     const { name, province } = req.body;
     if (!name) {
@@ -24,37 +26,33 @@ export const createCategory = async (req, res) => {
     await newCategory.save();
     res.status(201).json({ success: true, data: newCategory });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    throw new ApiError(500, "Failed to create category", error);
   }
-};
+});
 
 // Delete category (admin only)
-export const deleteCategory = async (req, res) => {
+export const deleteCategory = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     await Category.findByIdAndDelete(id);
     res.json({ success: true, message: "Category deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error deleting category", error: error.message });
+    throw new ApiError(500, "Error deleting category", error);
   }
-};
+});
 
 // Get all categories
-export const getAllCategories = async (req, res) => {
+export const getAllCategories = asyncHandler(async (req, res) => {
   try {
     const categories = await Category.find().sort({ createdAt: -1 });
     res.json({ success: true, categories });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error fetching categories", error: error.message });
+    throw new ApiError(500, "Error fetching categories", error);
   }
-};
+});
 
 // Get single category by slug
-export const getCategoryBySlug = async (req, res) => {
+export const getCategoryBySlug = asyncHandler(async (req, res) => {
   try {
     const { slug } = req.params;
     const category = await Category.findOne({ slug });
@@ -65,14 +63,12 @@ export const getCategoryBySlug = async (req, res) => {
 
     res.json({ success: true, category });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error fetching category", error: error.message });
+    throw new ApiError(500, "Error fetching category", error);
   }
-};
+});
 
 //searching and sorting categories
-export const searchCategories = async (req, res) => {
+export const searchCategories = asyncHandler(async (req, res) => {
   try {
     const { search, province, page = 1, limit = 10 } = req.query;
 
@@ -127,6 +123,6 @@ export const searchCategories = async (req, res) => {
       data: categoriesWithNews,
     });
   } catch (error) {
-    res.status(500).json({ message: "Search failed", error: error.message });
+    throw new ApiError(500, "Search failed", error);
   }
-};
+});
