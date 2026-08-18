@@ -1,10 +1,27 @@
 import mongoose from "mongoose";
 
-const newsArticleSchema = new mongoose.Schema({
-  title: {
+const mediaSchema = new mongoose.Schema({
+  type: {
     type: String,
+    enum: ["image", "video"],
     required: true,
   },
+  images: {
+    type: [String],
+    default: [],
+  },
+  video: {
+    url: String,
+    provider: {
+      type: String,
+      enum: ["s3", "youtube", "vimeo", "other"],
+    },
+    duration: Number,
+    thumbnail: String,
+  },
+}, { _id: false });
+
+const newsArticleSchema = new mongoose.Schema({
   slug: {
     type: String,
     required: true,
@@ -21,36 +38,24 @@ const newsArticleSchema = new mongoose.Schema({
     ref: "User",
     required: true,
   },
-  description: {
-    type: String,
-    default: "",
+  district: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "District",
   },
-  media :{
-    type : {
-      type : String,
-      enum : ["image" , "video"],
-      required : true
+  content: {
+    np: {
+      title: { type: String, required: true },
+      summary: { type: String, default: "" },
+      body: { type: String, default: "" },
     },
-
-    images :{
-    type : [String],
-    default : []
+    en: {
+      title: { type: String, default: "" },
+      summary: { type: String, default: "" },
+      body: { type: String, default: "" },
     },
-
-    video :{
-      url : String,
-      provider :{
-        type : String,
-        enum : ["s3" , "youtube" , "vimeo", "other"]
-      },
-      duration : Number,
-      thumbnail : String
-
-    }
-
   },
-  
-  date: {
+  media: mediaSchema,
+  publishedAt: {
     type: Date,
     required: true,
   },
@@ -62,38 +67,37 @@ const newsArticleSchema = new mongoose.Schema({
   rejectionReason: {
     type: String,
   },
-  view: {
+  views: {
     type: Number,
     default: 0,
   },
-  
 }, { timestamps: true });
 
 // Text index for search
 newsArticleSchema.index({
-  title: "text",
-  description: "text",
+  "content.np.title": "text",
+  "content.np.body": "text",
+  "content.en.title": "text",
+  "content.en.body": "text",
 }, {
   weights: {
-    title: 5,
-    description: 4,
+    "content.np.title": 5,
+    "content.en.title": 5,
+    "content.np.body": 3,
+    "content.en.body": 3,
   },
 });
 
+newsArticleSchema.virtual("comments", {
+  ref: "Comment",
+  localField: "_id",
+  foreignField: "newsId",
+  justOne: false,
+});
 
-newsArticleSchema.virtual("comments",{
-  ref : "Comment",
-   localField: "_id",  
-   foreignField: "newsId",
-    justOne: false 
-  });
-  
-  // Enable virtuals in JSON and Object output
-  newsArticleSchema.set("toObject", { virtuals: true });
-  newsArticleSchema.set("toJSON", { virtuals: true });
-  
-  
-  const newsModel = mongoose.model("NewsArticle", newsArticleSchema);
-  export default newsModel;
-  
-  
+// Enable virtuals in JSON and Object output
+newsArticleSchema.set("toObject", { virtuals: true });
+newsArticleSchema.set("toJSON", { virtuals: true });
+
+const newsModel = mongoose.model("NewsArticle", newsArticleSchema);
+export default newsModel;

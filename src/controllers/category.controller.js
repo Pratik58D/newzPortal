@@ -6,7 +6,7 @@ import { asyncHandler } from "../utilies/asyncHandler.js";
 
 // Create new category
 export const createCategory = asyncHandler(async (req, res) => {
-  const { name, province } = req.body;
+  const { name } = req.body;
   if (!name) {
     return res.status(400).json({ message: "Category name is required" });
   }
@@ -16,11 +16,7 @@ export const createCategory = asyncHandler(async (req, res) => {
   }
   const slug = slugify(name, { lower: true, strict: true });
 
-  const newCategory = new Category({
-    name,
-    slug,
-    province: province || null,
-  });
+  const newCategory = new Category({ name, slug });
   await newCategory.save();
   res.status(201).json({ success: true, data: newCategory });
 });
@@ -52,19 +48,14 @@ export const getCategoryBySlug = asyncHandler(async (req, res) => {
 
 //searching and sorting categories
 export const searchCategories = asyncHandler(async (req, res) => {
-    const { search, province, page = 1, limit = 10 } = req.query;
+    const { search, page = 1, limit = 10 } = req.query;
 
     const query = {};
 
-    // serching with resect to name , slug or province
+    // serching with resect to name or slug
     if (search) {
       const regex = new RegExp(search, "i");
       query.$or = [{ name: regex }, { slug: regex }];
-    }
-
-    // Filter directly by province if provided separately
-    if (province) {
-      query.province = province.toLowerCase();
     }
 
     // Paginate categories
@@ -79,10 +70,10 @@ export const searchCategories = asyncHandler(async (req, res) => {
     const categoriesWithNews = await Promise.all(
       categoriesPaginated.data.map(async (cat) => {
         const news = await newsModel
-          .find({ category: cat._id })
-          .sort({ createdAt: -1 })
+          .find({ category: cat._id, status: "approved" })
+          .sort({ publishedAt: -1 })
           .limit(5)
-          .select("title description slug images date")
+          .select("content slug media publishedAt")
           .populate({
             path: "comments",
             // match: { status: "approved" },    // only approved comments

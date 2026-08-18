@@ -6,23 +6,37 @@ import {
 } from "../utilies/imageHandling.js";
 import { paginate } from "../utilies/paginate.js";
 import Category from "../models/category.model.js";
+import cloudinary from "../config/cloudinary.js";
 import { asyncHandler } from "../utilies/asyncHandler.js";
 import { ApiError } from "../utilies/ApiError.js";
+
+// Nepali is required, so it's always a safe slug source if English is absent.
+// Devanagari doesn't transliterate through slugify, so an empty result falls
+// back to a timestamp-based slug instead of a broken/empty URL.
+const generateSlug = (titleEn, titleNp) => {
+  const source = titleEn || titleNp;
+  const slug = slugify(source, { lower: true, strict: true });
+  return slug || `news-${Date.now()}`;
+};
 
 // Staff (editor/admin/superadmin): CREATE
 // - editor-created articles start as "draft" and go through review
 // - admin/superadmin-created articles are auto-approved
 
 export const createNews = asyncHandler(async (req, res) => {
-  const { title, category, description, date } = req.body;
+  const {
+    titleNp, summaryNp, bodyNp,
+    titleEn, summaryEn, bodyEn,
+    category, district, date,
+  } = req.body;
   const files = req.files;
-  if (!title || !category || !date || !files?.length) {
+  if (!titleNp || !category || !date || !files?.length) {
     return res
       .status(400)
       .json({ message: "Missing required fields or images." });
   }
-  let slug = slugify(title, { lower: true, strict: true });
 
+  let slug = generateSlug(titleEn, titleNp);
   const exists = await newsModel.findOne({ slug });
   if (exists) slug += "-" + Date.now();
 
@@ -35,13 +49,16 @@ export const createNews = asyncHandler(async (req, res) => {
 
   const isSelfPublisher = ["admin", "superadmin"].includes(req.user.role);
   const news = new newsModel({
-    title,
     slug,
     category,
+    district: district || undefined,
     author: req.user.id,
     media: { type: "image", images: imageUrls },
-    description,
-    date,
+    content: {
+      np: { title: titleNp, summary: summaryNp || "", body: bodyNp || "" },
+      en: { title: titleEn || "", summary: summaryEn || "", body: bodyEn || "" },
+    },
+    publishedAt: date,
     status: isSelfPublisher ? "approved" : "draft",
   });
   await news.save();
@@ -68,11 +85,33 @@ export const updateNews = asyncHandler(async (req, res) => {
     }
   }
 
-  const { title, category, description, date, status } = req.body;
-  const updateFields = { title, category, description, date, status };
+  const {
+    titleNp, summaryNp, bodyNp,
+    titleEn, summaryEn, bodyEn,
+    category, district, date, status,
+  } = req.body;
 
-  if (title) {
-    let slug = slugify(title, { lower: true, strict: true });
+  const updateFields = { status };
+  if (district !== undefined) updateFields.district = district || undefined;
+  if (date) updateFields.publishedAt = date;
+
+  const hasContentChange = titleNp || summaryNp || bodyNp || titleEn || summaryEn || bodyEn;
+  if (hasContentChange) {
+    const merged = {
+      np: {
+        title: titleNp ?? existingNews.content.np.title,
+        summary: summaryNp ?? existingNews.content.np.summary,
+        body: bodyNp ?? existingNews.content.np.body,
+      },
+      en: {
+        title: titleEn ?? existingNews.content.en.title,
+        summary: summaryEn ?? existingNews.content.en.summary,
+        body: bodyEn ?? existingNews.content.en.body,
+      },
+    };
+    updateFields.content = merged;
+
+    let slug = generateSlug(merged.en.title, merged.np.title);
     const exists = await newsModel.findOne({
       slug,
       _id: { $ne: req.params.id },
@@ -171,7 +210,7 @@ export const rejectNews = asyncHandler(async (req, res) => {
 
 // Staff: moderation queue / "my articles" view - any status, filtered by ownership for editors
 export const getManageNews = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, status } = req.query;
+  const { page = 1, limit = 10, status, district } = req.query;
   const query = {};
   if (req.user.role === "editor") {
     query.author = req.user.id;
@@ -179,11 +218,17 @@ export const getManageNews = asyncHandler(async (req, res) => {
   if (status) {
     query.status = status;
   }
+  if (district) {
+    query.district = district;
+  }
 
   const result = await paginate(newsModel, query, {
     page,
     limit,
     sort: { createdAt: -1 },
+    // NOTE: not populating "district" yet - the District model/collection
+    // doesn't exist until the province/district seeding work lands. district
+    // filtering by ID above still works fine without it.
     populate: [
       { path: "category", select: "name slug" },
       { path: "author", select: "name email role" },
@@ -230,14 +275,23 @@ export const getNews = asyncHandler(async (req, res) => {
 
   if (search) {
     const regex = new RegExp(search, "i");
-    query.$or = [{ title: regex }, { description: regex }, { slug: regex }];
+    query.$or = [
+      { "content.np.title": regex },
+      { "content.np.body": regex },
+      { "content.en.title": regex },
+      { "content.en.body": regex },
+      { slug: regex },
+    ];
+  }
+  if (req.query.district) {
+    query.district = req.query.district;
   }
 
   // Parallel queries: get news + total count
   const [newsList, total] = await Promise.all([
     newsModel
       .find(query)
-      .sort({ date: -1 }) // latest news first
+      .sort({ publishedAt: -1 }) // latest news first
       .skip(skip)
       .limit(limit)
       .populate("category", "name slug")
