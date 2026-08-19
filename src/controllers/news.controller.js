@@ -1,23 +1,15 @@
 import newsModel from "../models/news.model.js";
-import slugify from "slugify";
 import {
   extractPublicId,
   uploadToCloudinary,
 } from "../utilies/imageHandling.js";
 import { paginate } from "../utilies/paginate.js";
 import Category from "../models/category.model.js";
+import District from "../models/district.model.js";
 import cloudinary from "../config/cloudinary.js";
 import { asyncHandler } from "../utilies/asyncHandler.js";
 import { ApiError } from "../utilies/ApiError.js";
-
-// Nepali is required, so it's always a safe slug source if English is absent.
-// Devanagari doesn't transliterate through slugify, so an empty result falls
-// back to a timestamp-based slug instead of a broken/empty URL.
-const generateSlug = (titleEn, titleNp) => {
-  const source = titleEn || titleNp;
-  const slug = slugify(source, { lower: true, strict: true });
-  return slug || `news-${Date.now()}`;
-};
+import { generateSlug } from "../utilies/generateSlug.js";
 
 // Staff (editor/admin/superadmin): CREATE
 // - editor-created articles start as "draft" and go through review
@@ -36,7 +28,7 @@ export const createNews = asyncHandler(async (req, res) => {
       .json({ message: "Missing required fields or images." });
   }
 
-  let slug = generateSlug(titleEn, titleNp);
+  let slug = generateSlug(titleEn, titleNp, "news");
   const exists = await newsModel.findOne({ slug });
   if (exists) slug += "-" + Date.now();
 
@@ -111,7 +103,7 @@ export const updateNews = asyncHandler(async (req, res) => {
     };
     updateFields.content = merged;
 
-    let slug = generateSlug(merged.en.title, merged.np.title);
+    let slug = generateSlug(merged.en.title, merged.np.title, "news");
     const exists = await newsModel.findOne({
       slug,
       _id: { $ne: req.params.id },
@@ -121,7 +113,7 @@ export const updateNews = asyncHandler(async (req, res) => {
   }
 
   if (category) {
-    const categoryDoc = await Category.findOne({ name: category.trim() });
+    const categoryDoc = await Category.findById(category);
     if (!categoryDoc) {
       return res.status(404).json({ message: "Category not found" });
     }
@@ -226,12 +218,10 @@ export const getManageNews = asyncHandler(async (req, res) => {
     page,
     limit,
     sort: { createdAt: -1 },
-    // NOTE: not populating "district" yet - the District model/collection
-    // doesn't exist until the province/district seeding work lands. district
-    // filtering by ID above still works fine without it.
     populate: [
       { path: "category", select: "name slug" },
       { path: "author", select: "name email role" },
+      { path: "district", select: "name slug province" },
     ],
   });
 
@@ -286,6 +276,10 @@ export const getNews = asyncHandler(async (req, res) => {
   if (req.query.district) {
     query.district = req.query.district;
   }
+  if (req.query.province) {
+    const districtIds = await District.find({ province: req.query.province.toLowerCase() }).distinct("_id");
+    query.district = { $in: districtIds };
+  }
 
   // Parallel queries: get news + total count
   const [newsList, total] = await Promise.all([
@@ -295,6 +289,7 @@ export const getNews = asyncHandler(async (req, res) => {
       .skip(skip)
       .limit(limit)
       .populate("category", "name slug")
+      .populate("district", "name slug province")
       .populate({
         path: "comments",
         select: "username commentText createdAt",
@@ -320,6 +315,7 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
   const news = await newsModel
     .findOne({ slug, status: "approved" })
     .populate("category", "name slug")
+    .populate("district", "name slug province")
     .populate({
       path: "comments",
       select: "username commentText createdAt",

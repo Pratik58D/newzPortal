@@ -8,6 +8,7 @@ import cloudinary from "./src/config/cloudinary.js";
 import newsRouter from "./src/routes/news.routes.js";
 import categoryRouter from "./src/routes/category.routes.js";
 import commentRouter from "./src/routes/comment.route.js";
+import districtRouter from "./src/routes/district.routes.js";
 import errorHandling from "./src/middleware/errorhandling.js";
 
 dotenv.config();
@@ -37,6 +38,7 @@ app.use("/api",userRouter);
 app.use("/api/news" , newsRouter);
 app.use("/api/category",categoryRouter);
 app.use("/api/comment",commentRouter)
+app.use("/api/districts",districtRouter)
 
 
 app.use(errorHandling);

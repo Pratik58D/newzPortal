@@ -1,22 +1,25 @@
-import slugify from "slugify";
 import Category from "../models/category.model.js";
 import newsModel from "../models/news.model.js";
 import { paginate } from "../utilies/paginate.js";
 import { asyncHandler } from "../utilies/asyncHandler.js";
+import { generateSlug } from "../utilies/generateSlug.js";
 
 // Create new category
 export const createCategory = asyncHandler(async (req, res) => {
   const { name } = req.body;
-  if (!name) {
-    return res.status(400).json({ message: "Category name is required" });
+  if (!name?.np) {
+    return res.status(400).json({ message: "Category name (Nepali) is required" });
   }
-  const existing = await Category.findOne({ name });
+  const existing = await Category.findOne({ "name.np": name.np });
   if (existing) {
     return res.status(409).json({ message: "Category already exists" });
   }
-  const slug = slugify(name, { lower: true, strict: true });
+  const slug = generateSlug(name.en, name.np, "category");
 
-  const newCategory = new Category({ name, slug });
+  const newCategory = new Category({
+    name: { np: name.np, en: name.en || "" },
+    slug,
+  });
   await newCategory.save();
   res.status(201).json({ success: true, data: newCategory });
 });
@@ -52,17 +55,17 @@ export const searchCategories = asyncHandler(async (req, res) => {
 
     const query = {};
 
-    // serching with resect to name or slug
+    // serching with resect to name (either language) or slug
     if (search) {
       const regex = new RegExp(search, "i");
-      query.$or = [{ name: regex }, { slug: regex }];
+      query.$or = [{ "name.np": regex }, { "name.en": regex }, { slug: regex }];
     }
 
     // Paginate categories
     const categoriesPaginated = await paginate(Category, query, {
       page,
       limit,
-      sort: { name: 1 },
+      sort: { "name.np": 1 },
     });
 
     // Fetch top 5 news for each category + + populate comments for each category's news
