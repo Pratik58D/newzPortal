@@ -38,9 +38,10 @@ const newsArticleSchema = new mongoose.Schema({
     ref: "User",
     required: true,
   },
-  district: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "District",
+  // optional - absence means the story isn't tied to a specific region
+  province: {
+    type: String,
+    enum: ["koshi", "madesh", "bagmati", "gandaki", "lumbini", "karnali", "sudurpashchim"],
   },
   content: {
     np: {

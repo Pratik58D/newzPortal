@@ -5,7 +5,6 @@ import {
 } from "../utilies/imageHandling.js";
 import { paginate } from "../utilies/paginate.js";
 import Category from "../models/category.model.js";
-import District from "../models/district.model.js";
 import cloudinary from "../config/cloudinary.js";
 import { asyncHandler } from "../utilies/asyncHandler.js";
 import { ApiError } from "../utilies/ApiError.js";
@@ -19,7 +18,7 @@ export const createNews = asyncHandler(async (req, res) => {
   const {
     titleNp, summaryNp, bodyNp,
     titleEn, summaryEn, bodyEn,
-    category, district, date,
+    category, province, date,
   } = req.body;
   const files = req.files;
   if (!titleNp || !category || !date || !files?.length) {
@@ -43,7 +42,7 @@ export const createNews = asyncHandler(async (req, res) => {
   const news = new newsModel({
     slug,
     category,
-    district: district || undefined,
+    province: province || undefined,
     author: req.user.id,
     media: { type: "image", images: imageUrls },
     content: {
@@ -80,11 +79,11 @@ export const updateNews = asyncHandler(async (req, res) => {
   const {
     titleNp, summaryNp, bodyNp,
     titleEn, summaryEn, bodyEn,
-    category, district, date, status,
+    category, province, date, status,
   } = req.body;
 
   const updateFields = { status };
-  if (district !== undefined) updateFields.district = district || undefined;
+  if (province !== undefined) updateFields.province = province || undefined;
   if (date) updateFields.publishedAt = date;
 
   const hasContentChange = titleNp || summaryNp || bodyNp || titleEn || summaryEn || bodyEn;
@@ -202,7 +201,7 @@ export const rejectNews = asyncHandler(async (req, res) => {
 
 // Staff: moderation queue / "my articles" view - any status, filtered by ownership for editors
 export const getManageNews = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, status, district } = req.query;
+  const { page = 1, limit = 10, status, province } = req.query;
   const query = {};
   if (req.user.role === "editor") {
     query.author = req.user.id;
@@ -210,8 +209,8 @@ export const getManageNews = asyncHandler(async (req, res) => {
   if (status) {
     query.status = status;
   }
-  if (district) {
-    query.district = district;
+  if (province) {
+    query.province = province.toLowerCase();
   }
 
   const result = await paginate(newsModel, query, {
@@ -221,7 +220,6 @@ export const getManageNews = asyncHandler(async (req, res) => {
     populate: [
       { path: "category", select: "name slug" },
       { path: "author", select: "name email role" },
-      { path: "district", select: "name slug province" },
     ],
   });
 
@@ -273,12 +271,8 @@ export const getNews = asyncHandler(async (req, res) => {
       { slug: regex },
     ];
   }
-  if (req.query.district) {
-    query.district = req.query.district;
-  }
   if (req.query.province) {
-    const districtIds = await District.find({ province: req.query.province.toLowerCase() }).distinct("_id");
-    query.district = { $in: districtIds };
+    query.province = req.query.province.toLowerCase();
   }
 
   // Parallel queries: get news + total count
@@ -289,7 +283,6 @@ export const getNews = asyncHandler(async (req, res) => {
       .skip(skip)
       .limit(limit)
       .populate("category", "name slug")
-      .populate("district", "name slug province")
       .populate({
         path: "comments",
         select: "username commentText createdAt",
@@ -315,7 +308,6 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
   const news = await newsModel
     .findOne({ slug, status: "approved" })
     .populate("category", "name slug")
-    .populate("district", "name slug province")
     .populate({
       path: "comments",
       select: "username commentText createdAt",

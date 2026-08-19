@@ -1,6 +1,6 @@
-// The 7 provinces are fixed - this list essentially never changes, so it's a
-// plain constant rather than a DB collection (unlike District, which has 77
-// real entries worth managing as data).
+// The 7 provinces are fixed and used directly as the enum on NewsArticle.province -
+// this list essentially never changes, so it's a plain constant rather than a
+// DB collection, just used to give the enum codes bilingual display labels.
 export const PROVINCES = [
   { code: "koshi", name: { np: "कोशी", en: "Koshi" } },
   { code: "madesh", name: { np: "मधेश", en: "Madhesh" } },
