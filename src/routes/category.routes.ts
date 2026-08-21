@@ -4,6 +4,7 @@ import {
   createCategory,
   getAllCategories,
   getCategoryBySlug,
+  getSubcategories,
   deleteCategory,
   searchCategories,
 } from "../controllers/category.controller.js";
@@ -15,6 +16,7 @@ const categoryRouter = express.Router();
 // 🌍 Public routes
 categoryRouter.get("/", getAllCategories);
 categoryRouter.get("/search", searchCategories);
+categoryRouter.get("/:slug/subcategories", getSubcategories);
 categoryRouter.get("/:slug", getCategoryBySlug);
 
 // 🔐 Admin-only routes

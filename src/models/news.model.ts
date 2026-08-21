@@ -26,6 +26,7 @@ export interface INewsArticle extends Document {
   _id: Types.ObjectId;
   slug: string;
   category: Types.ObjectId;
+  subCategory?: Types.ObjectId;
   author: Types.ObjectId;
   province?: ProvinceCode;
   content: {
@@ -73,6 +74,10 @@ const newsArticleSchema = new Schema<INewsArticle>({
     type: Schema.Types.ObjectId,
     ref: "Category",
     required: true,
+  },
+  subCategory: {
+    type: Schema.Types.ObjectId,
+    ref: "Category",
   },
   author: {
     type: Schema.Types.ObjectId,

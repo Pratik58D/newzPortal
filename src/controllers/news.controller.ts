@@ -19,13 +19,30 @@ export const createNews = asyncHandler(async (req, res) => {
   const {
     titleNp, summaryNp, bodyNp,
     titleEn, summaryEn, bodyEn,
-    category, province, date,
+    category, subCategory, province, date,
   } = req.body;
   const files = req.files as Express.Multer.File[] | undefined;
   if (!titleNp || !category || !date || !files?.length) {
     return res
       .status(400)
       .json({ message: "Missing required fields or images." });
+  }
+
+  const categoryDoc = await Category.findById(category);
+  if (!categoryDoc) {
+    return res.status(404).json({ message: "Category not found" });
+  }
+
+  if (subCategory) {
+    const subCategoryDoc = await Category.findById(subCategory);
+    if (!subCategoryDoc) {
+      return res.status(404).json({ message: "Subcategory not found" });
+    }
+    if (subCategoryDoc.parent?.toString() !== category) {
+      return res
+        .status(400)
+        .json({ message: "Subcategory does not belong to the selected category" });
+    }
   }
 
   let slug = generateSlug(titleEn, titleNp, "news");
@@ -43,6 +60,7 @@ export const createNews = asyncHandler(async (req, res) => {
   const news = new newsModel({
     slug,
     category,
+    subCategory: subCategory || undefined,
     province: (province as ProvinceCode) || undefined,
     author: req.user!.id,
     media: { type: "image", images: imageUrls },
@@ -80,7 +98,7 @@ export const updateNews = asyncHandler(async (req, res) => {
   const {
     titleNp, summaryNp, bodyNp,
     titleEn, summaryEn, bodyEn,
-    category, province, date, status,
+    category, subCategory, province, date, status,
   } = req.body;
 
   const updateFields: Record<string, unknown> = { status };
@@ -118,6 +136,44 @@ export const updateNews = asyncHandler(async (req, res) => {
       return res.status(404).json({ message: "Category not found" });
     }
     updateFields.category = categoryDoc._id;
+
+    if (subCategory !== undefined) {
+      if (subCategory) {
+        const subCategoryDoc = await Category.findById(subCategory);
+        if (!subCategoryDoc) {
+          return res.status(404).json({ message: "Subcategory not found" });
+        }
+        if (subCategoryDoc.parent?.toString() !== category) {
+          return res
+            .status(400)
+            .json({ message: "Subcategory does not belong to the selected category" });
+        }
+        updateFields.subCategory = subCategoryDoc._id;
+      } else {
+        updateFields.subCategory = null;
+      }
+    } else if (existingNews.subCategory) {
+      // category changed without resending subCategory - clear it if it no longer belongs to the new category
+      const currentSubCategoryDoc = await Category.findById(existingNews.subCategory);
+      if (currentSubCategoryDoc?.parent?.toString() !== category) {
+        updateFields.subCategory = null;
+      }
+    }
+  } else if (subCategory !== undefined) {
+    if (subCategory) {
+      const subCategoryDoc = await Category.findById(subCategory);
+      if (!subCategoryDoc) {
+        return res.status(404).json({ message: "Subcategory not found" });
+      }
+      if (subCategoryDoc.parent?.toString() !== existingNews.category.toString()) {
+        return res
+          .status(400)
+          .json({ message: "Subcategory does not belong to the selected category" });
+      }
+      updateFields.subCategory = subCategoryDoc._id;
+    } else {
+      updateFields.subCategory = null;
+    }
   }
 
   const files = req.files as Express.Multer.File[] | undefined;
@@ -220,6 +276,7 @@ export const getManageNews = asyncHandler(async (req, res) => {
     sort: { createdAt: -1 },
     populate: [
       { path: "category", select: "name slug" },
+      { path: "subCategory", select: "name slug" },
       { path: "author", select: "name email role" },
     ],
   });
@@ -284,6 +341,7 @@ export const getNews = asyncHandler(async (req, res) => {
       .skip(skip)
       .limit(limit)
       .populate("category", "name slug")
+      .populate("subCategory", "name slug")
       .populate({
         path: "comments",
         select: "username commentText createdAt",
@@ -309,6 +367,7 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
   const news = await newsModel
     .findOne({ slug, status: "approved" })
     .populate("category", "name slug")
+    .populate("subCategory", "name slug")
     .populate({
       path: "comments",
       select: "username commentText createdAt",
