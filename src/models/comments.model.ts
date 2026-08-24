@@ -1,5 +1,8 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 
+export type CommentStatus = "pending" | "approved" | "rejected";
+
+
 // guest only comment
 
 export interface IComment extends Document {
@@ -8,6 +11,7 @@ export interface IComment extends Document {
   username: string;
   userEmail: string;
   commentText: string;
+  status: CommentStatus;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,7 +38,14 @@ const commentSchema = new Schema<IComment>({
     required: true,
     trim: true,
   },
+  status: {
+    type: String,
+    enum: ["pending", "approved", "rejected"],
+    default: "pending",
+  },
 }, { timestamps: true });
+
+commentSchema.index({ newsId: 1, status: 1 });
 
 const CommentModel = mongoose.model<IComment>("Comment", commentSchema);
 
