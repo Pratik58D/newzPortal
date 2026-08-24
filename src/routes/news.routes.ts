@@ -17,9 +17,9 @@ const newsRouter = express.Router();
 
 //staff routes
 
-newsRouter.post("/create", authMiddleware, staffOnly, upload.array("images", 5), createNews);
-newsRouter.put("/update/:id", authMiddleware, staffOnly, upload.array("images", 5), updateNews);
-newsRouter.delete("/delete/:id", authMiddleware, role, deleteNews);
+newsRouter.post("/", authMiddleware, staffOnly, upload.array("images", 5), createNews);
+newsRouter.put("/:id", authMiddleware, staffOnly, upload.array("images", 5), updateNews);
+newsRouter.delete("/:id", authMiddleware, role, deleteNews);
 newsRouter.patch("/submit/:id", authMiddleware, staffOnly, submitNews);
 newsRouter.patch("/approve/:id", authMiddleware, role, approveNews);
 newsRouter.patch("/reject/:id", authMiddleware, role, rejectNews);
