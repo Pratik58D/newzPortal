@@ -57,9 +57,12 @@ export const isSuperAdmin = (req: Request, res: Response, next: NextFunction) =>
 
 export const role = async (req: Request, res: Response, next: NextFunction) => {
   if (req.user?.role === "admin" || req.user?.role === "superadmin") {
-    next();
+    return next();
   } else {
-    return res.status(401).json({ message: "unable to access this api" });
+    return res.status(403).json({ 
+      success: false,
+      message: "Only admin and superadmin can perform this action"
+     });
   }
 };
 
@@ -68,6 +71,6 @@ export const staffOnly = (req: Request, res: Response, next: NextFunction) => {
   if (["editor", "admin", "superadmin"].includes(req.user?.role ?? "")) {
     return next();
   } else {
-    return res.status(401).json({ message: "unable to access this api" });
+    return res.status(403).json({ message: "Only staff members can perform this action" });
   }
 };
