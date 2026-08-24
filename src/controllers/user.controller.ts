@@ -185,7 +185,19 @@ export const loginUser = asyncHandler(async (req, res) => {
       },
     });
 });
+export const getCurrentUser = asyncHandler(async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized",
+    });
+  }
 
+  return res.status(200).json({
+    success: true,
+    user: req.user,
+  });
+});
 //logout controller
 
 export const logout = asyncHandler(async (req, res) => {

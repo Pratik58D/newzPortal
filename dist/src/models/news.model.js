@@ -32,6 +32,10 @@ const newsArticleSchema = new Schema({
         ref: "Category",
         required: true,
     },
+    subCategory: {
+        type: Schema.Types.ObjectId,
+        ref: "Category",
+    },
     author: {
         type: Schema.Types.ObjectId,
         ref: "User",
