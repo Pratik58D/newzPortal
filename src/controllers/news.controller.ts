@@ -310,7 +310,6 @@ export const deleteNews = asyncHandler(async (req, res) => {
 });
 
 //public :Get paginated news with comments and category
-
 export const getNews = asyncHandler(async (req, res) => {
   const page = parseInt(String(req.query.page)) || 1;
   const limit = parseInt(String(req.query.limit)) || 10;
@@ -344,6 +343,7 @@ export const getNews = asyncHandler(async (req, res) => {
       .populate("subCategory", "name slug")
       .populate({
         path: "comments",
+        match: {status: "approved"}, // only approved comments are public
         select: "username commentText createdAt",
         options: { sort: { createdAt: -1 } },
       })

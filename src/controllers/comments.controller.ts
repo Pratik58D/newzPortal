@@ -29,8 +29,27 @@ export const createComment = asyncHandler(async (req, res) => {
    });
 });
 
-//updateCommnet
 
+
+//get comment for admin that has everything on that
+export const getComments= asyncHandler(async(req,res)=> {
+  const comments = await CommentModel.find().sort({ createdAt: -1 });
+
+  if (!comments || comments.length === 0) {
+    return res.status(404).json({
+      success: false,
+      message: "No comments found for this news article",
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "All comments retrieved successfully",
+    comments,
+  });
+});
+
+//update Comment text
 export const updateComment = asyncHandler(async (req, res) => {
   const { commentText } = req.body;
 
@@ -53,6 +72,31 @@ export const updateComment = asyncHandler(async (req, res) => {
      comment: updated 
     });
 });
+
+ //update comment status
+ export const updateCommentStatus= asyncHandler(async(req,res)=> {
+
+  const { status } = req.body;
+
+  const updatedComment = await CommentModel.findByIdAndUpdate(
+    req.params.id,
+    { status },
+    { new: true }
+  )
+
+   if (!updatedComment) {
+    return res.status(404).json({
+      success: false,
+      message: "Comment not found",
+    });
+  }
+  
+  return res.status(200).json({
+    success: true,
+    message: "Comment status updated successfully",
+    comment: updatedComment,
+  })
+});  
 
 // DELETE COMMENT
 export const deleteComment = asyncHandler(async (req, res) => {

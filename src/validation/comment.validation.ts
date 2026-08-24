@@ -30,3 +30,8 @@ export const updateCommentSchema = z.object({
     .min(1, "Comment cannot be empty")
     .max(2000, "Comment must not exceed 2000 characters"),
 });
+
+
+export const updateCommentStatusSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
+});
