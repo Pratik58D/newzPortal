@@ -19,77 +19,119 @@ export const createNews = asyncHandler(async (req, res) => {
   const {
     titleNp, summaryNp, bodyNp,
     titleEn, summaryEn, bodyEn,
-    category, subCategory, province, date,
+    category,
+    subCategory,
+    province
   } = req.body;
+
   const files = req.files as Express.Multer.File[] | undefined;
-  if (!titleNp || !category || !date || !files?.length) {
+
+  if (!titleNp || !category || !files?.length) {
     return res
       .status(400)
-      .json({ message: "Missing required fields or images." });
+      .json({
+        success: false,
+        message: "Missing required fields or images."
+      });
   }
 
   const categoryDoc = await Category.findById(category);
+
   if (!categoryDoc) {
-    return res.status(404).json({ message: "Category not found" });
+    return res.status(404).json({
+      success: false,
+      message: "Category not found"
+    });
   }
 
   if (subCategory) {
     const subCategoryDoc = await Category.findById(subCategory);
+
     if (!subCategoryDoc) {
-      return res.status(404).json({ message: "Subcategory not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Subcategory not found"
+      });
     }
+
     if (subCategoryDoc.parent?.toString() !== category) {
-      return res
-        .status(400)
-        .json({ message: "Subcategory does not belong to the selected category" });
+      return res.status(400).json({
+        success: false,
+        message: "Subcategory does not belong to the selected category"
+      });
     }
   }
 
   let slug = generateSlug(titleEn, titleNp, "news");
+
   const exists = await newsModel.findOne({ slug });
+
   if (exists) slug += "-" + Date.now();
 
   let imageUrls: string[];
+
   try {
     imageUrls = await uploadToCloudinary(files);
   } catch (error) {
     throw new ApiError(500, "Failed to upload images", error);
   }
 
-  const isSelfPublisher = ["admin", "superadmin"].includes(req.user!.role);
   const news = new newsModel({
     slug,
     category,
     subCategory: subCategory || undefined,
     province: (province as ProvinceCode) || undefined,
     author: req.user!.id,
-    media: { type: "image", images: imageUrls },
-    content: {
-      np: { title: titleNp, summary: summaryNp || "", body: bodyNp || "" },
-      en: { title: titleEn || "", summary: summaryEn || "", body: bodyEn || "" },
+    media: {
+      type: "image",
+      images: imageUrls
     },
-    publishedAt: date,
-    status: isSelfPublisher ? "approved" : "draft",
+
+    content: {
+      np: {
+        title: titleNp,
+        summary: summaryNp || "",
+        body: bodyNp || ""
+      },
+
+      en: {
+        title: titleEn || "",
+        summary: summaryEn || "",
+        body: bodyEn || ""
+      },
+    },
+    status: "draft",
   });
+
   await news.save();
-  res
-    .status(201)
-    .json({ success: true, message: "News created", data: news });
+
+  res.status(201).json({
+    success: true,
+    message: "News created",
+    data: news
+  });
 });
 
-//  Staff: UPDATE
-// editors may only edit their own draft/rejected articles; admin/superadmin may edit anything
+//  Staff: UPDATE news content, category, subcategory, province, date, and images
+// editors may only edit their own draft/rejected articles.
+//  admin/superadmin may edit anything
+
 export const updateNews = asyncHandler(async (req, res) => {
+
   const existingNews = await newsModel.findById(req.params.id);
+
   if (!existingNews) {
-    return res.status(404).json({ message: "News not found" });
+    return res.status(404).json({ success: false, message: "News not found" });
   }
 
+  // Editors can only edit their own draft or rejected articles
   if (req.user!.role === "editor") {
     const isOwner = existingNews.author?.equals(req.user!.id);
     const isEditable = ["draft", "rejected"].includes(existingNews.status);
+
     if (!isOwner || !isEditable) {
       return res.status(403).json({
+        success: false,
         message: "You can only edit your own draft or rejected articles",
       });
     }
@@ -98,16 +140,32 @@ export const updateNews = asyncHandler(async (req, res) => {
   const {
     titleNp, summaryNp, bodyNp,
     titleEn, summaryEn, bodyEn,
-    category, subCategory, province, date, status,
+    category, subCategory, province
   } = req.body;
 
-  const updateFields: Record<string, unknown> = { status };
-  if (province !== undefined) updateFields.province = province || undefined;
-  if (date) updateFields.publishedAt = date;
+  const updateFields: Record<string, unknown> = {};
 
-  const hasContentChange = titleNp || summaryNp || bodyNp || titleEn || summaryEn || bodyEn;
-  if (hasContentChange) {
-    const merged = {
+  //province
+  if (province !== undefined) {
+    updateFields.province = province || undefined;
+  }
+
+  //content
+  const titleChanged =
+    titleNp !== undefined ||
+    titleEn !== undefined;
+
+  const contentChanged =
+    titleNp !== undefined ||
+    summaryNp !== undefined ||
+    bodyNp !== undefined ||
+    titleEn !== undefined ||
+    summaryEn !== undefined ||
+    bodyEn !== undefined;
+
+
+  if (contentChanged) {
+    const updatedContent = {
       np: {
         title: titleNp ?? existingNews.content.np.title,
         summary: summaryNp ?? existingNews.content.np.summary,
@@ -119,150 +177,235 @@ export const updateNews = asyncHandler(async (req, res) => {
         body: bodyEn ?? existingNews.content.en.body,
       },
     };
-    updateFields.content = merged;
 
-    let slug = generateSlug(merged.en.title, merged.np.title, "news");
-    const exists = await newsModel.findOne({
-      slug,
-      _id: { $ne: req.params.id },
-    });
-    if (exists) slug += "-" + Date.now();
-    updateFields.slug = slug;
+    updateFields.content = updatedContent;
+
+    // Only generate a new slug if the title changed
+
+    if (titleChanged) {
+      const newSlug = generateSlug(
+        updatedContent.en.title,
+        updatedContent.np.title,
+        "news"
+      );
+
+      // Check whether another article already uses this slug
+      const existingSlug = await newsModel.findOne({
+        slug: newSlug,
+        _id: { $ne: req.params.id },
+      });
+
+      updateFields.slug = existingSlug
+        ? `${newSlug}-${Date.now()}`
+        : newSlug;
+    }
   }
+
+  //category and subcategory
 
   if (category) {
     const categoryDoc = await Category.findById(category);
+
     if (!categoryDoc) {
-      return res.status(404).json({ message: "Category not found" });
+      return res.status(404).json({ success: false, message: "Category not found" });
     }
+
     updateFields.category = categoryDoc._id;
 
+
+    // If subcategory was also provided, validate it
     if (subCategory !== undefined) {
-      if (subCategory) {
+      if (!subCategory) {
+        updateFields.subCategory = null;
+      } else {
         const subCategoryDoc = await Category.findById(subCategory);
         if (!subCategoryDoc) {
-          return res.status(404).json({ message: "Subcategory not found" });
+          return res.status(404).json({
+            success: false,
+            message: "Subcategory not found",
+          });
         }
         if (subCategoryDoc.parent?.toString() !== category) {
-          return res
-            .status(400)
-            .json({ message: "Subcategory does not belong to the selected category" });
+          return res.status(400).json({
+            success: false,
+            message: "Subcategory does not belong to the selected category",
+          });
         }
+
         updateFields.subCategory = subCategoryDoc._id;
-      } else {
-        updateFields.subCategory = null;
       }
     } else if (existingNews.subCategory) {
-      // category changed without resending subCategory - clear it if it no longer belongs to the new category
-      const currentSubCategoryDoc = await Category.findById(existingNews.subCategory);
-      if (currentSubCategoryDoc?.parent?.toString() !== category) {
+      // Category changed but no subcategory was provided.
+      // Make sure the old subcategory still belongs to the new category.
+      const currentSubCategory = await Category.findById(existingNews.subCategory);
+      if (
+        currentSubCategory?.parent?.toString() !== category
+      ) {
         updateFields.subCategory = null;
       }
-    }
-  } else if (subCategory !== undefined) {
-    if (subCategory) {
-      const subCategoryDoc = await Category.findById(subCategory);
-      if (!subCategoryDoc) {
-        return res.status(404).json({ message: "Subcategory not found" });
-      }
-      if (subCategoryDoc.parent?.toString() !== existingNews.category.toString()) {
-        return res
-          .status(400)
-          .json({ message: "Subcategory does not belong to the selected category" });
-      }
-      updateFields.subCategory = subCategoryDoc._id;
-    } else {
-      updateFields.subCategory = null;
     }
   }
 
+
+
+  //subcategory only
+
+  else if (subCategory !== undefined) {
+    if (!subCategory) {
+      updateFields.subCategory = null;
+    } else {
+      const subCategoryDoc = await Category.findById(subCategory);
+
+      if (!subCategoryDoc) {
+        return res.status(404).json({
+          success: false,
+          message: "Subcategory not found",
+        });
+      }
+
+      if (
+        subCategoryDoc.parent?.toString() !==
+        existingNews.category.toString()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Subcategory does not belong to the selected category",
+        });
+      }
+      updateFields.subCategory = subCategoryDoc._id;
+    }
+  }
+
+  //images
   const files = req.files as Express.Multer.File[] | undefined;
+
   if (files && files.length > 0) {
     try {
-      updateFields.media = { type: "image", images: await uploadToCloudinary(files) };
+      const images = await uploadToCloudinary(files);
+
+      updateFields.media = {
+        type: "image",
+        images
+      };
     } catch (error) {
       throw new ApiError(500, "Failed to upload images", error);
     }
   }
 
+  //update article
   const updatedNews = await newsModel.findByIdAndUpdate(
     req.params.id,
     updateFields,
     {
       new: true,
+      runValidators: true,
     }
   );
 
-  res.json({ success: true, data: updatedNews });
+  res.json({ success: true, message: "News updated successfully", data: updatedNews });
 });
 
-// Editor (author only) / admin / superadmin: submit a draft or rejected article for review
-export const submitNews = asyncHandler(async (req, res) => {
+//update news status 
+export const updateNewsStatus = asyncHandler(async (req, res) => {
+  const { status, rejectionReason } = req.body;
+
   const news = await newsModel.findById(req.params.id);
+
   if (!news) {
-    return res.status(404).json({ message: "News not found" });
+    return res.status(404).json({
+      success: false,
+      message: "News not found"
+    });
   }
 
+  const currentStatus = news.status;
+  const userRole = req.user!.role;
+  const isAdmin = ["admin", "superadmin"].includes(userRole);
+  const isEditor = userRole === "editor";
   const isOwner = news.author?.equals(req.user!.id);
-  const isSelfPublisher = ["admin", "superadmin"].includes(req.user!.role);
-  if (!isOwner && !isSelfPublisher) {
-    return res.status(403).json({ message: "You can only submit your own articles" });
+
+  //validate requested status
+  const allowedStatuses = [
+    "draft", 
+    "pending", 
+    "approved",
+    "rejected"
+  ];
+
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ 
+      success: false,
+      message: "Invalid status"
+    });
   }
 
-  if (!["draft", "rejected"].includes(news.status)) {
-    return res
-      .status(400)
-      .json({ message: "Only draft or rejected articles can be submitted" });
+  // Editors can only submit their own draft/rejected articles for review
+  if (isEditor) {
+    if (!isOwner) {
+      return res.status(403).json({ 
+        success: false, 
+        message: "You can only update your own articles" 
+      });
+    }
+
+   const canSubmit = (
+        (currentStatus === "draft" && status === "pending") ||
+        (currentStatus === "rejected" && status === "pending")
+      )
+
+    if (!canSubmit) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Editors can only submit draft or rejected articles for review" });
+    }
   }
 
-  news.status = "pending";
-  news.rejectionReason = undefined;
+  //admin/superadmin can approve/reject any article, 
+
+  if (isAdmin) {
+    if (currentStatus !== "pending") {
+      return res.status(400).json({ success: false, message: "Only pending articles can be approved or rejected" });
+    }
+
+    if (!["approved", "rejected"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Admins can only approve or reject pending articles" });
+    }
+  }
+
+  //save rejection reason when rejecting
+  if (status === "rejected") {
+    news.rejectionReason = rejectionReason || undefined;
+  } else {
+    news.rejectionReason = undefined;
+  }
+
+  //approval
+  if (status === "approved") {
+    news.publishedAt = new Date();
+  }
+
+  news.status = status;
   await news.save();
 
-  res.json({ success: true, data: news });
-});
+  return res.status(200).json({
+    success: true,
+    message: `News status changed from ${currentStatus} to ${status}`,
+    data: news,
+  });
 
-// Admin/superadmin: approve a pending article
-export const approveNews = asyncHandler(async (req, res) => {
-  const news = await newsModel.findById(req.params.id);
-  if (!news) {
-    return res.status(404).json({ message: "News not found" });
-  }
-  if (news.status !== "pending") {
-    return res.status(400).json({ message: "Only pending articles can be approved" });
-  }
-
-  news.status = "approved";
-  news.rejectionReason = undefined;
-  await news.save();
-
-  res.json({ success: true, data: news });
-});
-
-// Admin/superadmin: reject a pending article, optionally with a reason
-export const rejectNews = asyncHandler(async (req, res) => {
-  const news = await newsModel.findById(req.params.id);
-  if (!news) {
-    return res.status(404).json({ message: "News not found" });
-  }
-  if (news.status !== "pending") {
-    return res.status(400).json({ message: "Only pending articles can be rejected" });
-  }
-
-  news.status = "rejected";
-  news.rejectionReason = req.body.rejectionReason || undefined;
-  await news.save();
-
-  res.json({ success: true, data: news });
 });
 
 // Staff: moderation queue / "my articles" view - any status, filtered by ownership for editors
 export const getManageNews = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, status, province } = req.query;
+
   const query: Record<string, unknown> = {};
+
+  //an editor only sees their own articles, while admin/superadmin see everything
   if (req.user!.role === "editor") {
     query.author = req.user!.id;
   }
+
   if (status) {
     query.status = status;
   }
@@ -284,30 +427,6 @@ export const getManageNews = asyncHandler(async (req, res) => {
   res.json({ success: true, ...result });
 });
 
-// admin :delete
-export const deleteNews = asyncHandler(async (req, res) => {
-  const newsId = req.params.id;
-
-  // Check if the news exists
-  const news = await newsModel.findById(newsId);
-  if (!news) {
-    return res.status(404).json({ message: "News not found" });
-  }
-
-  //  Delete images from Cloudinary if stored there
-  try {
-    for (const imageUrl of news.media?.images || []) {
-      const publicId = extractPublicId(imageUrl);
-      await cloudinary.uploader.destroy(publicId!);
-    }
-  } catch (error) {
-    throw new ApiError(500, "Failed to delete images from storage", error);
-  }
-
-  await newsModel.findByIdAndDelete(newsId);
-
-  res.json({ success: true, message: "News deleted successfully" });
-});
 
 //public :Get paginated news with comments and category
 export const getNews = asyncHandler(async (req, res) => {
@@ -315,7 +434,9 @@ export const getNews = asyncHandler(async (req, res) => {
   const limit = parseInt(String(req.query.limit)) || 10;
   const search = req.query.search || "";
 
+  //only approved news
   const query: Record<string, unknown> = { status: "approved" }; // only approved news is public
+
   const skip = (page - 1) * limit;
 
   if (search) {
@@ -343,7 +464,7 @@ export const getNews = asyncHandler(async (req, res) => {
       .populate("subCategory", "name slug")
       .populate({
         path: "comments",
-        match: {status: "approved"}, // only approved comments are public
+        match: { status: "approved" }, // only approved comments are public
         select: "username commentText createdAt",
         options: { sort: { createdAt: -1 } },
       })
@@ -380,4 +501,29 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
   }
 
   return res.json({ success: true, data: news });
+});
+
+// admin :delete
+export const deleteNews = asyncHandler(async (req, res) => {
+  const newsId = req.params.id;
+
+  // Check if the news exists
+  const news = await newsModel.findById(newsId);
+  if (!news) {
+    return res.status(404).json({ message: "News not found" });
+  }
+
+  //  Delete images from Cloudinary if stored there
+  try {
+    for (const imageUrl of news.media?.images || []) {
+      const publicId = extractPublicId(imageUrl);
+      await cloudinary.uploader.destroy(publicId!);
+    }
+  } catch (error) {
+    throw new ApiError(500, "Failed to delete images from storage", error);
+  }
+
+  await newsModel.findByIdAndDelete(newsId);
+
+  res.json({ success: true, message: "News deleted successfully" });
 });
