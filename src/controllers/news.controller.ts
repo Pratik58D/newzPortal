@@ -485,8 +485,13 @@ export const getNews = asyncHandler(async (req, res) => {
 //  Get one news article by slug (with category and comments)
 export const getNewsBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
+
   const news = await newsModel
-    .findOne({ slug, status: "approved" })
+    .findOneAndUpdate(
+      { slug, status: "approved" },
+      { $inc: { views: 1 } },
+      { new: true }
+    )
     .populate("category", "name slug")
     .populate("subCategory", "name slug")
     .populate({
@@ -497,7 +502,9 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
     .lean();
 
   if (!news) {
-    return res.status(404).json({ message: "News article not found" });
+    return res.status(404).json({
+      success: false,
+      message: "News article not found" });
   }
 
   return res.json({ success: true, data: news });
