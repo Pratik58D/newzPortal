@@ -24,14 +24,14 @@ export const createNews = asyncHandler(async (req, res) => {
     province
   } = req.body;
 
-  const files = req.files as Express.Multer.File[] | undefined;
+  const files = (req.files ?? []) as Express.Multer.File[];
 
-  if (!titleNp || !category || !files?.length) {
+  if (!titleNp || !category) {
     return res
       .status(400)
       .json({
         success: false,
-        message: "Missing required fields or images."
+        message: "Missing required fields: titleNp and category are required"
       });
   }
 
@@ -310,6 +310,8 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
   const { status, rejectionReason } = req.body;
 
   const news = await newsModel.findById(req.params.id);
+  
+  console.log({news})
 
   if (!news) {
     return res.status(404).json({
