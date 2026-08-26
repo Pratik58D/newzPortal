@@ -19,9 +19,18 @@ const Port = process.env.port!;
 
 cloudinary;
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  ...(process.env.CLIENT_URLS || process.env.CLIENT_URL || "")
+    .split(",")
+    .map((url) => url.trim().replace(/\/$/, ""))
+    .filter(Boolean),
+].filter((url, index, origins) => origins.indexOf(url) === index);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: allowedOrigins,
     credentials: true,
   })
 );
