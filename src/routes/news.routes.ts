@@ -2,31 +2,34 @@ import express from "express";
 import { authMiddleware, role, staffOnly } from "../middleware/auth.middleware.js";
 import upload from "../middleware/multer.js";
 import {
-  approveNews,
   createNews,
   deleteNews,
   getManageNews,
   getNews,
   getNewsBySlug,
-  rejectNews,
-  submitNews,
   updateNews,
+  updateNewsStatus
 } from "../controllers/news.controller.js";
 
 const newsRouter = express.Router();
 
 //staff routes
 
-newsRouter.post("/create", authMiddleware, staffOnly, upload.array("images", 5), createNews);
-newsRouter.put("/update/:id", authMiddleware, staffOnly, upload.array("images", 5), updateNews);
-newsRouter.delete("/delete/:id", authMiddleware, role, deleteNews);
-newsRouter.patch("/submit/:id", authMiddleware, staffOnly, submitNews);
-newsRouter.patch("/approve/:id", authMiddleware, role, approveNews);
-newsRouter.patch("/reject/:id", authMiddleware, role, rejectNews);
+newsRouter.post("/", authMiddleware, staffOnly, upload.array("images", 5), createNews);
+
+// Update content
+newsRouter.put("/:id", authMiddleware, staffOnly, upload.array("images", 5), updateNews);
+
+//update news status
+newsRouter.patch("/:id/status", authMiddleware, staffOnly, updateNewsStatus);
+
+//delete news
+newsRouter.delete("/:id", authMiddleware, role, deleteNews);
+
+// Staff management
 newsRouter.get("/manage", authMiddleware, staffOnly, getManageNews);
 
-//pubilic routes
-
+// Public routes
 newsRouter.get("/", getNews);
 newsRouter.get("/:slug", getNewsBySlug);
 

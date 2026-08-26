@@ -10,6 +10,7 @@ import categoryRouter from "./src/routes/category.routes.js";
 import commentRouter from "./src/routes/comment.route.js";
 import provinceRouter from "./src/routes/province.routes.js";
 import errorHandling from "./src/middleware/errorhandling.js";
+import reporterRouter from "./src/routes/reporter.routes.js";
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.get("/", (req, res) => {
 
 //Routing
 app.use("/api", userRouter);
+app.use("/api/reporters", reporterRouter);
 app.use("/api/news", newsRouter);
 app.use("/api/category", categoryRouter);
 app.use("/api/comments", commentRouter);

@@ -1,20 +1,9 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 import { PROVINCE_CODES, type ProvinceCode } from "../constants/provinces.js";
+import mediaSchema, { IMedia } from "./media.model.js";
 
 export type NewsStatus = "draft" | "pending" | "approved" | "rejected";
-export type MediaType = "image" | "video";
-export type VideoProvider = "s3" | "youtube" | "vimeo" | "other";
 
-interface IMedia {
-  type: MediaType;
-  images: string[];
-  video?: {
-    url?: string;
-    provider?: VideoProvider;
-    duration?: number;
-    thumbnail?: string;
-  };
-}
 
 interface IContentBlock {
   title: string;
@@ -25,43 +14,31 @@ interface IContentBlock {
 export interface INewsArticle extends Document {
   _id: Types.ObjectId;
   slug: string;
+
   category: Types.ObjectId;
   subCategory?: Types.ObjectId;
-  author: Types.ObjectId;
+
+  editor: Types.ObjectId;
+  reporter?: Types.ObjectId;
+  authorType: "reporter" | "editor";
+
   province?: ProvinceCode;
+
   content: {
     np: IContentBlock;
     en: IContentBlock;
   };
-  media: IMedia;
-  publishedAt: Date;
+
+  media?: IMedia;
+
+  publishedAt?: Date;
   status: NewsStatus;
   rejectionReason?: string;
   views: number;
+  
   createdAt: Date;
   updatedAt: Date;
 }
-
-const mediaSchema = new Schema<IMedia>({
-  type: {
-    type: String,
-    enum: ["image", "video"],
-    required: true,
-  },
-  images: {
-    type: [String],
-    default: [],
-  },
-  video: {
-    url: String,
-    provider: {
-      type: String,
-      enum: ["s3", "youtube", "vimeo", "other"],
-    },
-    duration: Number,
-    thumbnail: String,
-  },
-}, { _id: false });
 
 const newsArticleSchema = new Schema<INewsArticle>({
   slug: {
@@ -79,9 +56,19 @@ const newsArticleSchema = new Schema<INewsArticle>({
     type: Schema.Types.ObjectId,
     ref: "Category",
   },
-  author: {
+  editor: {
     type: Schema.Types.ObjectId,
     ref: "User",
+    required: true,
+  },
+  reporter: {
+    type: Schema.Types.ObjectId,
+    ref: "Reporter",
+  },
+  authorType: {
+    type: String,
+     enum: ["reporter", "editor"],
+     default: "reporter",
     required: true,
   },
   // optional - absence means the story isn't tied to a specific region
@@ -101,15 +88,16 @@ const newsArticleSchema = new Schema<INewsArticle>({
       body: { type: String, default: "" },
     },
   },
+
   media: mediaSchema,
+
   publishedAt: {
-    type: Date,
-    required: true,
+    type: Date
   },
   status: {
     type: String,
     enum: ["draft", "pending", "approved", "rejected"],
-    default: "pending",
+    default: "draft",
   },
   rejectionReason: {
     type: String,
