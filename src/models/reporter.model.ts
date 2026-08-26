@@ -41,5 +41,6 @@ const reporterSchema = new Schema<IReporter>(
 )
 
 
+const Reporter = mongoose.model<IReporter>("Reporter", reporterSchema);
 
-export default mongoose.model<IReporter>("Reporter", reporterSchema);
+export default  Reporter;
