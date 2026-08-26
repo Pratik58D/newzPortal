@@ -50,9 +50,17 @@ const newsArticleSchema = new Schema<INewsArticle>({
     type: Schema.Types.ObjectId,
     ref: "Category",
   },
-  author: {
+  editor: {
     type: Schema.Types.ObjectId,
     ref: "User",
+    required: true,
+  },
+  reporter: {
+    type: Schema.Types.ObjectId,
+    ref: "Reporter",
+  },
+  authorName: {
+    type: String,
     required: true,
   },
   // optional - absence means the story isn't tied to a specific region
