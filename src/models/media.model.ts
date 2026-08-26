@@ -4,9 +4,16 @@ export type MediaType = "image" | "video";
 
 export type VideoProvider = "s3" | "youtube" | "vimeo" | "other";
 
+export interface IMediaImage {
+    url: string;
+    key: string;
+}
+
 export interface IMedia {
     type: MediaType;
-    images?: string[];
+
+    images?: IMediaImage[];
+
     video?: {
         url?: string;
         provider?: VideoProvider;
@@ -15,6 +22,20 @@ export interface IMedia {
     };
 }
 
+//image schema 
+const mediaImageSchema = new Schema<IMediaImage>(
+    {
+        url: {
+            type: String,
+            required: true
+        },
+        key: {
+            type: String,
+            required: true
+        },
+    },
+    { _id: false }
+)
 
 const mediaSchema = new Schema<IMedia>(
     {
@@ -24,7 +45,7 @@ const mediaSchema = new Schema<IMedia>(
             required: true
         },
         images: {
-            type: [String],
+            type: [mediaImageSchema],
         },
         video: {
             url: String,
