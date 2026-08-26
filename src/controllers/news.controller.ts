@@ -101,7 +101,10 @@ export const updateNews = asyncHandler(async (req, res) => {
     category, subCategory, province, date, status,
   } = req.body;
 
-  const updateFields: Record<string, unknown> = { status };
+  const updateFields: Record<string, unknown> = {};
+  if (status !== undefined) {
+    updateFields.status = status;
+  }
   if (province !== undefined) updateFields.province = province || undefined;
   if (date) updateFields.publishedAt = date;
 
