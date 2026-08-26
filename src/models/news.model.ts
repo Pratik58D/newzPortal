@@ -14,9 +14,14 @@ interface IContentBlock {
 export interface INewsArticle extends Document {
   _id: Types.ObjectId;
   slug: string;
+
   category: Types.ObjectId;
   subCategory?: Types.ObjectId;
-  author: Types.ObjectId;
+
+  editor: Types.ObjectId;
+  reporter?: Types.ObjectId;
+  authorType: "reporter" | "editor";
+
   province?: ProvinceCode;
 
   content: {
@@ -30,6 +35,7 @@ export interface INewsArticle extends Document {
   status: NewsStatus;
   rejectionReason?: string;
   views: number;
+  
   createdAt: Date;
   updatedAt: Date;
 }
@@ -59,8 +65,10 @@ const newsArticleSchema = new Schema<INewsArticle>({
     type: Schema.Types.ObjectId,
     ref: "Reporter",
   },
-  authorName: {
+  authorType: {
     type: String,
+     enum: ["reporter", "editor"],
+     default: "reporter",
     required: true,
   },
   // optional - absence means the story isn't tied to a specific region

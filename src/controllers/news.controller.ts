@@ -10,6 +10,8 @@ import cloudinary from "../config/cloudinary.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { generateSlug } from "../utils/generateSlug.js";
+import Reporter from "../models/reporter.model.js";
+import {uploadNewsImages , deleteNewsImages} from "../services/media.service.js";
 
 // Staff (editor/admin/superadmin): CREATE
 // - editor-created articles start as "draft" and go through review
@@ -21,7 +23,9 @@ export const createNews = asyncHandler(async (req, res) => {
     titleEn, summaryEn, bodyEn,
     category,
     subCategory,
-    province
+    province,
+    reporter,
+    authorType = 'reporter'
   } = req.body;
 
   const files = (req.files ?? []) as Express.Multer.File[];
@@ -35,6 +39,23 @@ export const createNews = asyncHandler(async (req, res) => {
       });
   }
 
+  // Validate authorType
+  if (!["reporter", "editor"].includes(authorType)) {
+    return res.status(400).json({
+      success: false,
+      message: "authorType must be either reporter or editor",
+    });
+  }
+
+  // If reporter is selected as author, reporter must be provided
+  if (authorType === "reporter" && !reporter) {
+    return res.status(400).json({
+      success: false,
+      message: "Reporter is required when authorType is reporter",
+    });
+  }
+
+  // Validate category
   const categoryDoc = await Category.findById(category);
 
   if (!categoryDoc) {
@@ -44,6 +65,7 @@ export const createNews = asyncHandler(async (req, res) => {
     });
   }
 
+  // Validate subcategory
   if (subCategory) {
     const subCategoryDoc = await Category.findById(subCategory);
 
@@ -62,26 +84,45 @@ export const createNews = asyncHandler(async (req, res) => {
     }
   }
 
+  // Validate reporter
+  if (reporter) {
+    const reporterDoc = await Reporter.findOne({
+      _id: reporter,
+      isActive: true,
+    });
+
+    if (!reporterDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "Reporter not found or inactive",
+      });
+    }
+  }
+
+  //generate slug from title, ensuring uniqueness
   let slug = generateSlug(titleEn, titleNp, "news");
 
   const exists = await newsModel.findOne({ slug });
 
   if (exists) slug += "-" + Date.now();
 
-  let imageUrls: string[];
-
-  try {
-    imageUrls = await uploadToCloudinary(files);
-  } catch (error) {
-    throw new ApiError(500, "Failed to upload images", error);
-  }
+  // Upload images
+  const imageUrls = await uploadNewsImages(files)
 
   const news = new newsModel({
     slug,
     category,
     subCategory: subCategory || undefined,
+
+    // Logged-in CMS user
+    editor: req.user!.id,
+    // Field reporter
+    reporter: reporter || undefined,
+    // Who should appear publicly as author
+    authorType,
+
     province: (province as ProvinceCode) || undefined,
-    author: req.user!.id,
+
     media: {
       type: "image",
       images: imageUrls
@@ -126,7 +167,7 @@ export const updateNews = asyncHandler(async (req, res) => {
 
   // Editors can only edit their own draft or rejected articles
   if (req.user!.role === "editor") {
-    const isOwner = existingNews.author?.equals(req.user!.id);
+    const isOwner = existingNews.editor?.equals(req.user!.id);
     const isEditable = ["draft", "rejected"].includes(existingNews.status);
 
     if (!isOwner || !isEditable) {
@@ -140,7 +181,8 @@ export const updateNews = asyncHandler(async (req, res) => {
   const {
     titleNp, summaryNp, bodyNp,
     titleEn, summaryEn, bodyEn,
-    category, subCategory, province
+    category, subCategory, province,
+    reporter, authorType
   } = req.body;
 
   const updateFields: Record<string, unknown> = {};
@@ -246,8 +288,6 @@ export const updateNews = asyncHandler(async (req, res) => {
     }
   }
 
-
-
   //subcategory only
 
   else if (subCategory !== undefined) {
@@ -275,6 +315,48 @@ export const updateNews = asyncHandler(async (req, res) => {
       updateFields.subCategory = subCategoryDoc._id;
     }
   }
+
+  // Author / repoter
+
+  if (authorType !== undefined) {
+    if (!["reporter", "editor"].includes(authorType)) {
+      return res.status(400).json({
+        success: false,
+        message: "authorType must be either reporter or editor",
+      });
+    }
+    updateFields.authorType = authorType;
+
+    if (authorType === "reporter") {
+      if (!reporter && !existingNews.reporter) {
+        return res.status(400).json({
+          success: false,
+          message: "Reporter is required when authorType is reporter",
+        });
+      }
+
+      if (reporter) {
+        const reporterDoc = await Reporter.findOne({
+          _id: reporter,
+          isActive: true,
+        });
+
+        if (!reporterDoc) {
+          return res.status(404).json({
+            success: false,
+            message: "Reporter not found or inactive",
+          });
+        }
+
+        updateFields.reporter = reporterDoc._id;
+      }
+    }
+    if (authorType === "editor") {
+      updateFields.reporter = undefined;
+    }
+  }
+
+
 
   //images
   const files = req.files as Express.Multer.File[] | undefined;
@@ -310,8 +392,8 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
   const { status, rejectionReason } = req.body;
 
   const news = await newsModel.findById(req.params.id);
-  
-  console.log({news})
+
+  console.log({ news })
 
   if (!news) {
     return res.status(404).json({
@@ -324,18 +406,18 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
   const userRole = req.user!.role;
   const isAdmin = ["admin", "superadmin"].includes(userRole);
   const isEditor = userRole === "editor";
-  const isOwner = news.author?.equals(req.user!.id);
+  const isOwner = news.editor?.equals(req.user!.id);
 
   //validate requested status
   const allowedStatuses = [
-    "draft", 
-    "pending", 
+    "draft",
+    "pending",
     "approved",
     "rejected"
   ];
 
   if (!allowedStatuses.includes(status)) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
       message: "Invalid status"
     });
@@ -344,21 +426,22 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
   // Editors can only submit their own draft/rejected articles for review
   if (isEditor) {
     if (!isOwner) {
-      return res.status(403).json({ 
-        success: false, 
-        message: "You can only update your own articles" 
+      return res.status(403).json({
+        success: false,
+        message: "You can only update your own articles"
       });
     }
 
-   const canSubmit = (
-        (currentStatus === "draft" && status === "pending") ||
-        (currentStatus === "rejected" && status === "pending")
-      )
+    const canSubmit = (
+      (currentStatus === "draft" && status === "pending") ||
+      (currentStatus === "rejected" && status === "pending")
+    )
 
     if (!canSubmit) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "Editors can only submit draft or rejected articles for review" });
+        message: "Editors can only submit draft or rejected articles for review"
+      });
     }
   }
 
@@ -405,7 +488,7 @@ export const getManageNews = asyncHandler(async (req, res) => {
 
   //an editor only sees their own articles, while admin/superadmin see everything
   if (req.user!.role === "editor") {
-    query.author = req.user!.id;
+    query.editor = req.user!.id;
   }
 
   if (status) {
@@ -422,7 +505,8 @@ export const getManageNews = asyncHandler(async (req, res) => {
     populate: [
       { path: "category", select: "name slug" },
       { path: "subCategory", select: "name slug" },
-      { path: "author", select: "name email role" },
+      { path: "editor", select: "name email role" },
+      {path:"reporter", select: "name email phone "}
     ],
   });
 
@@ -506,7 +590,8 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
   if (!news) {
     return res.status(404).json({
       success: false,
-      message: "News article not found" });
+      message: "News article not found"
+    });
   }
 
   return res.json({ success: true, data: news });
@@ -523,14 +608,7 @@ export const deleteNews = asyncHandler(async (req, res) => {
   }
 
   //  Delete images from Cloudinary if stored there
-  try {
-    for (const imageUrl of news.media?.images || []) {
-      const publicId = extractPublicId(imageUrl);
-      await cloudinary.uploader.destroy(publicId!);
-    }
-  } catch (error) {
-    throw new ApiError(500, "Failed to delete images from storage", error);
-  }
+  await deleteNewsImages(news.media?.images || []);
 
   await newsModel.findByIdAndDelete(newsId);
 
