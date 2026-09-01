@@ -553,7 +553,8 @@ export const getNews = asyncHandler(async (req, res) => {
       .populate({
         path: "comments",
         match: { status: "approved" }, // only approved comments are public
-        select: "username commentText createdAt",
+        select: "userId commentText createdAt",
+        populate: { path: "userId", select: "name" },
         options: { sort: { createdAt: -1 } },
       })
       .lean(), // plain JS objects for performance
@@ -584,7 +585,8 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
     .populate("subCategory", "name slug")
     .populate({
       path: "comments",
-      select: "username commentText createdAt",
+      select: "userId commentText createdAt",
+      populate: { path: "userId", select: "name" },
       options: { sort: { createdAt: -1 } },
     })
     .lean();

@@ -23,7 +23,7 @@ export const getAllUsers = asyncHandler(async (req, res) => {
 // correctly attached to every article they've authored.
 export const updateUser = asyncHandler(async (req, res) => {
   const { role: newRole, newPassword, isActive } = req.body;
-  const allowedRoles: UserRole[] = ["editor", "admin", "superadmin"];
+  const allowedRoles: UserRole[] = ["user", "editor", "admin", "superadmin"];
 
   if (newRole === undefined && newPassword === undefined && isActive === undefined) {
     return res
@@ -122,6 +122,38 @@ export const createUser = asyncHandler(async (req, res) => {
   });
 });
 
+// Public registration creates a regular account. Staff roles can only be
+// assigned through the protected user-management endpoint.
+export const registerUser = asyncHandler(async (req, res) => {
+  const { name, email, password } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ success: false, message: "Please provide name, email and password" });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(422).json({ success: false, message: "Invalid email format" });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ success: false, message: "Password must be at least 6 characters long" });
+  }
+  if (await userModel.findOne({ email: email.toLowerCase() })) {
+    return res.status(409).json({ success: false, message: "An account with this email already exists" });
+  }
+
+  const user = await userModel.create({
+    name: name.trim(),
+    email: email.toLowerCase(),
+    password: await bcrypt.hash(password, 10),
+    role: "user",
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: "Account created successfully. Please log in to comment.",
+    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+  });
+});
+
 //login controller
 
 export const loginUser = asyncHandler(async (req, res) => {
@@ -177,6 +209,7 @@ export const loginUser = asyncHandler(async (req, res) => {
       message: "User logged in successfully",
       token,
       user: {
+        name: matchedUser.name,
         email: matchedUser.email,
         role: matchedUser.role,
         id: matchedUser._id,

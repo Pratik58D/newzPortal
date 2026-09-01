@@ -1,7 +1,7 @@
 # News Portal — Backend
 
 ### Node.js + Express + MongoDB backend for a news portal
-- Features: users (admin), categories, news articles, guest comments
+- Features: users, categories, news articles, authenticated comments
 - Image upload (Multer → Cloudinary), search, pagination, role-based auth
 
 ---
@@ -36,7 +36,7 @@ This is the backend for a news portal. Features implemented:
 - Create / Update / Delete news (admin-only)
 - News have multiple images stored on Cloudinary (Multer memory storage)
 - Categories (optional province) — can be province-specific or national/international
-- Guest comments (no login required) with moderation status
+- Authenticated user comments with moderation status
 - Search + sorting + pagination for news and categories
 - Virtual population to include comments on news responses
 
@@ -87,7 +87,7 @@ npm install
 ## Models overview
 
 ### User
-- name, email, password (hashed), role (default "user" or "admin")
+- name, email, password (hashed), role (user, editor, admin, or superadmin)
 - password field uses select: false.
 
 ### Category
@@ -104,7 +104,7 @@ npm install
 
 ## Comment
 - newsId: ObjectId(ref NewsArticle),
-- username, userEmail, commentText,
+- userId: ObjectId(ref User), commentText,
 - status (pending|approved|rejected)
 
 ## Auth & middleware
@@ -127,8 +127,8 @@ npm install
 
 ## Main API endpoints (summary)
 ### Auth / Users
-- POST /api/users — create user (admin)
-- POST /api/auth/login — login (returns cookie or token)
+- POST /api/register — create a regular user account
+- POST /api/login — login (returns cookie or token)
 
 ### News
 - GET /api/news — list news (query: page, limit, search, province, categoryId) — public
@@ -144,8 +144,8 @@ npm install
 - POST /api/categories — create category — admin only
 - DELETE /api/categories/:id — delete category — admin only
 
-### Comments (guest)
-- POST /api/comments — create comment (body: newsId, username, userEmail, commentText)
+### Comments (authenticated users)
+- POST /api/comments — create comment (requires login; body: newsId, commentText)
 - GET /api/comments?newsId=xxx — get comments for a news (supports page & limit)
 - PUT /api/comments/:id — update comment (admin/moderator or via moderation)
 - DELETE /api/comments/:id — delete comment (admin)

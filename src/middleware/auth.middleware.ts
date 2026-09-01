@@ -32,7 +32,12 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
         .json({ success: false, message: "Unauthorized user!" });
     }
 
-    req.user = { id: currentUser._id.toString(), role: currentUser.role, email: currentUser.email };
+    req.user = {
+      id: currentUser._id.toString(),
+      name: currentUser.name,
+      role: currentUser.role,
+      email: currentUser.email,
+    };
     next();
   } catch (error) {
     console.log("error in auth middleware", (error as Error).message);

@@ -4,7 +4,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 // CREATE COMMENT
 export const createComment = asyncHandler(async (req, res) => {
-  const { newsId, username, userEmail, commentText } = req.body;
+  const { newsId, commentText } = req.body;
 
   // Check if news exists
   const newsExists = await newsModel.findById(newsId);
@@ -18,8 +18,7 @@ export const createComment = asyncHandler(async (req, res) => {
 
   const comment = await CommentModel.create({
     newsId,
-    username,
-    userEmail,
+    userId: req.user!.id,
     commentText,
   });
 
@@ -33,7 +32,9 @@ export const createComment = asyncHandler(async (req, res) => {
 
 //get comment for admin that has everything on that
 export const getComments= asyncHandler(async(req,res)=> {
-  const comments = await CommentModel.find().sort({ createdAt: -1 });
+  const comments = await CommentModel.find()
+    .populate("userId", "name email")
+    .sort({ createdAt: -1 });
 
   if (!comments || comments.length === 0) {
     return res.status(404).json({

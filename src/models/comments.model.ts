@@ -3,13 +3,10 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 export type CommentStatus = "pending" | "approved" | "rejected";
 
 
-// guest only comment
-
 export interface IComment extends Document {
   _id: Types.ObjectId;
   newsId: Types.ObjectId;
-  username: string;
-  userEmail: string;
+  userId: Types.ObjectId;
   commentText: string;
   status: CommentStatus;
   createdAt: Date;
@@ -22,16 +19,10 @@ const commentSchema = new Schema<IComment>({
     ref: "NewsArticle",
     required: true,
   },
-  username: {
-    type: String,
+  userId: {
+    type: Schema.Types.ObjectId,
+    ref: "User",
     required: true,
-    trim: true,
-  },
-  userEmail: {
-    type: String,
-    required: true,
-    trim: true,
-    lowercase: true,
   },
   commentText: {
     type: String,

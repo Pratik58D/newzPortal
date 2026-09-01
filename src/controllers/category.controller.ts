@@ -128,7 +128,8 @@ export const searchCategories = asyncHandler(async (req, res) => {
         .populate({
           path: "comments",
           // match: { status: "approved" },    // only approved comments
-          select: "username commentText createdAt",
+          select: "userId commentText createdAt",
+          populate: { path: "userId", select: "name" },
           options: { sort: { createdAt: -1 } },
         });
 
