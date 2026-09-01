@@ -6,6 +6,7 @@ export const MEDIA_FOLDERS = {
     NEWS: "news-images",
     REPORTER: "reporter-images",
     CATEGORY: "category-images",
+    ADVERTISEMENT: "advertisement-images",
 } as const;
 
 export interface MediaImage {
@@ -127,3 +128,15 @@ export const uploadReporterImages = (files: Express.Multer.File[]) =>
  
 export const uploadCategoryImages = (files: Express.Multer.File[]) =>
     uploadMediaImages(files, MEDIA_FOLDERS.CATEGORY);
+
+
+
+export const uploadAdvertisementImages = (
+  files: Express.Multer.File[]
+) =>
+  uploadMediaImages(
+    files,
+    MEDIA_FOLDERS.ADVERTISEMENT
+);
+
+  export const deleteAdvertisementImages = deleteMediaImages;

@@ -11,6 +11,7 @@ import commentRouter from "./src/routes/comment.route.js";
 import provinceRouter from "./src/routes/province.routes.js";
 import errorHandling from "./src/middleware/errorhandling.js";
 import reporterRouter from "./src/routes/reporter.routes.js";
+import advertisementRoutes from "./src/routes/advertisement.route.js";
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.use("/api/news", newsRouter);
 app.use("/api/category", categoryRouter);
 app.use("/api/comments", commentRouter);
 app.use("/api/provinces", provinceRouter);
+app.use( "/api/advertisements",advertisementRoutes);
 
 app.use(errorHandling);
 
