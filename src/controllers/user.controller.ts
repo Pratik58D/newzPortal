@@ -7,14 +7,45 @@ import { getCookieOptions } from "../utils/cookieOptions.js";
 
 // superadmin only: list all staff accounts
 export const getAllUsers = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10 } = req.query;
+  const { 
+    page = 1, 
+    limit = 10,
+    search = "",
+    sortBy= "createdAt",
+    sortOrder = "desc"
+  } = req.query;
+
+  //Build search filter
+  const filter: Record<string, unknown> = {};
+
+  if(search && typeof search === "string") {
+    filter.$or=[
+      {name: { $regex: search, $options: "i" }},
+      {email: { $regex: search, $options: "i" }}
+    ]
+  }
+
+  //allowed sorting fields
+  const allowedSortFields = ["name", "email", "role", "isActive", "createdAt"];
+
+  const sortField = 
+  typeof sortBy === "string" && allowedSortFields.includes(sortBy) 
+  ? sortBy : "createdAt";
+
+  const sortDirection = sortOrder === "asc"? 1 : -1;
+
+
   // password has select:false on the schema, so it's excluded by default
-  const result = await paginate(userModel, {}, {
+  const result = await paginate(userModel, filter, {
     page: page as string,
     limit: limit as string,
-    sort: { createdAt: -1 },
+    sort: { [sortField]: sortDirection },
   });
-  res.json({ success: true, ...result });
+
+  res.json({ 
+    success: true,
+    ...result
+   });
 });
 
 // superadmin only: update another user's role, password and/or active status
@@ -155,7 +186,6 @@ export const registerUser = asyncHandler(async (req, res) => {
 });
 
 //login controller
-
 export const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
@@ -229,8 +259,8 @@ export const getCurrentUser = asyncHandler(async (req, res) => {
     user: req.user,
   });
 });
-//logout controller
 
+//logout controller
 export const logout = asyncHandler(async (req, res) => {
   res.clearCookie("token", getCookieOptions());
   res
