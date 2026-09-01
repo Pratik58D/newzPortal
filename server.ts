@@ -15,25 +15,36 @@ import reporterRouter from "./src/routes/reporter.routes.js";
 dotenv.config();
 
 const app = express();
-const Port = process.env.port!;
+const Port = process.env.port || 5000;
+const isProd = process.env.NODE_ENV === "production";
 
 cloudinary;
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  ...(process.env.CLIENT_URLS || process.env.CLIENT_URL || "")
-    .split(",")
-    .map((url) => url.trim().replace(/\/$/, ""))
-    .filter(Boolean),
-].filter((url, index, origins) => origins.indexOf(url) === index);
+// Origins explicitly configured via env (works in both dev and prod)
+const envOrigins = (process.env.CLIENT_URLS || process.env.CLIENT_URL || "")
+  .split(",")
+  .map((url) => url.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
+// Only allow localhost when NOT in production
+const localOrigins = isProd
+  ? []
+  : ["http://localhost:3000", "http://127.0.0.1:3000"];
+
+const allowedOrigins = [...new Set([...envOrigins, ...localOrigins])];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // allow non-browser requests (curl, server-to-server, etc.)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
   })
 );
+
 app.use(express.json());
 app.use(cookieParser());
 
