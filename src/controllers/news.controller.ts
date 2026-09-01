@@ -484,20 +484,91 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
 
 // Staff: moderation queue / "my articles" view - any status, filtered by ownership for editors
 export const getManageNews = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, status, province } = req.query;
+
+  const { 
+    page = 1,
+    limit = 10, 
+    search,
+    status,
+    province ,
+    category,
+    subCategory,
+    reporter,
+    editor,
+    dateFrom,
+    dateTo
+  } = req.query;
 
   const query: Record<string, unknown> = {};
 
-  //an editor only sees their own articles, while admin/superadmin see everything
+  // editor only sees their own articles, while admin/superadmin see everything
   if (req.user!.role === "editor") {
     query.editor = req.user!.id;
   }
 
-  if (status) {
+   // Status filter
+  if (status && typeof status === "string") {
     query.status = status;
   }
-  if (province) {
+
+  // Province filter
+  if (province && typeof province === "string") {
     query.province = String(province).toLowerCase();
+  }
+
+   // Category filter
+  if (category && typeof category === "string") {
+    query.category = category;
+  }
+
+  // Sub-category filter
+  if (subCategory && typeof subCategory === "string") {
+    query.subCategory = subCategory;
+  }
+
+   // Reporter filter
+  if (reporter && typeof reporter === "string") {
+    query.reporter = reporter;
+  }
+
+  // Editor filter 
+  //  Only useful for admin/superadmin
+  if (
+    editor && 
+    typeof editor === "string" &&
+    req.user!.role !== "editor"
+  ) {
+    query.editor = editor;
+  }
+
+
+  //search
+  if(search && typeof search === "string") {
+    const regex = new RegExp(search, "i");
+
+    query.$or = [
+      { "content.np.title": regex },
+      { "content.en.title": regex },
+      { slug: regex },
+    ]
+  }
+
+  //Date range filter
+  if (dateFrom || dateTo) {
+    const createdAt: Record<string, Date> = {};
+
+    if(dateFrom && typeof dateFrom === "string") {
+      createdAt.$gte = new Date(dateFrom);
+    }
+
+    if(dateTo && typeof dateTo === "string") {
+      const endDate = new Date(dateTo);
+      endDate.setHours(23, 59, 59, 999); // Set to end of the day
+
+      createdAt.$lte = endDate;
+    }
+
+    query.createdAt = createdAt;
   }
 
   const result = await paginate(newsModel, query, {
@@ -512,7 +583,9 @@ export const getManageNews = asyncHandler(async (req, res) => {
     ],
   });
 
-  res.json({ success: true, ...result });
+  res.json({ 
+    success: true, 
+  ...result });
 });
 
 
