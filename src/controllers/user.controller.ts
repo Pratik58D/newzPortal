@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { paginate } from "../utils/paginate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { getCookieOptions } from "../utils/cookieOptions.js";
 
 // superadmin only: list all staff accounts
 export const getAllUsers = asyncHandler(async (req, res) => {
@@ -166,14 +167,11 @@ export const loginUser = asyncHandler(async (req, res) => {
     { expiresIn: "1h" }
   );
 
-  res
-    .cookie("token", token, {
-      httpOnly: true,
-      sameSite: "none",
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
-    })
-    .status(200)
+  res.cookie("token", token, {
+    ...getCookieOptions(),
+    maxAge: 24 * 60 * 60 * 1000, // 1 hour in milliseconds
+  })
+  res.status(200)
     .json({
       success: true,
       message: "User logged in successfully",
@@ -201,7 +199,7 @@ export const getCurrentUser = asyncHandler(async (req, res) => {
 //logout controller
 
 export const logout = asyncHandler(async (req, res) => {
-  res.clearCookie("token");
+  res.clearCookie("token", getCookieOptions());
   res
     .status(200)
     .json({ success: true, message: "User logged out sucessfully" });
