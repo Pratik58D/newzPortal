@@ -15,23 +15,19 @@ import reporterRouter from "./src/routes/reporter.routes.js";
 dotenv.config();
 
 const app = express();
-const Port = process.env.port || 5000;
+const Port = process.env.PORT || 5000;
 const isProd = process.env.NODE_ENV === "production";
 
 cloudinary;
 
-// Origins explicitly configured via env (works in both dev and prod)
-const envOrigins = (process.env.CLIENT_URLS || process.env.CLIENT_URL || "")
-  .split(",")
-  .map((url) => url.trim().replace(/\/$/, ""))
-  .filter(Boolean);
+// Allowed frontend origins
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  process.env.CLIENT_URL,
+].filter(Boolean);
 
-// Only allow localhost when NOT in production
-const localOrigins = isProd
-  ? []
-  : ["http://localhost:3000", "http://127.0.0.1:3000"];
 
-const allowedOrigins = [...new Set([...envOrigins, ...localOrigins])];
 
 app.use(
   cors({
