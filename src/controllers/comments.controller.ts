@@ -32,8 +32,10 @@ export const createComment = asyncHandler(async (req, res) => {
 
 //get comment for admin that has everything on that
 export const getComments= asyncHandler(async(req,res)=> {
+
   const comments = await CommentModel.find()
     .populate("userId", "name email")
+    .populate("newsId", "slug content.np.title content.en.title")
     .sort({ createdAt: -1 });
 
   if (!comments || comments.length === 0) {
