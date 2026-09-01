@@ -11,13 +11,14 @@ export const getAllUsers = asyncHandler(async (req, res) => {
     page = 1, 
     limit = 10,
     search = "",
-    sortBy= "createdAt",
-    sortOrder = "desc"
+    role,
+    status
   } = req.query;
 
   //Build search filter
   const filter: Record<string, unknown> = {};
 
+   // Search by name or email
   if(search && typeof search === "string") {
     filter.$or=[
       {name: { $regex: search, $options: "i" }},
@@ -25,21 +26,43 @@ export const getAllUsers = asyncHandler(async (req, res) => {
     ]
   }
 
-  //allowed sorting fields
-  const allowedSortFields = ["name", "email", "role", "isActive", "createdAt"];
+  // Filter by role
+   if (typeof role === "string" && role) {
+    const allowedRoles: UserRole[] = [
+      "user",
+      "editor",
+      "admin",
+      "superadmin",
+    ];
 
-  const sortField = 
-  typeof sortBy === "string" && allowedSortFields.includes(sortBy) 
-  ? sortBy : "createdAt";
+     if (!allowedRoles.includes(role as UserRole)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role",
+      });
+    }
 
-  const sortDirection = sortOrder === "asc"? 1 : -1;
+    filter.role = role;
+  }
 
+
+  // Filter by active/inactive status
+  if (status === "active") {
+    filter.isActive = true;
+  } else if (status === "inactive") {
+    filter.isActive = false;
+  } else if (status) {
+    return res.status(400).json({
+      success: false,
+      message: "Status must be active or inactive",
+    });
+  }
 
   // password has select:false on the schema, so it's excluded by default
   const result = await paginate(userModel, filter, {
     page: page as string,
     limit: limit as string,
-    sort: { [sortField]: sortDirection },
+    sort: { createdAt: -1 },
   });
 
   res.json({ 
