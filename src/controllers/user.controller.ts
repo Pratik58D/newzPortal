@@ -62,7 +62,9 @@ export const getAllUsers = asyncHandler(async (req, res) => {
   const result = await paginate(userModel, filter, {
     page: page as string,
     limit: limit as string,
-    sort: { createdAt: -1 },
+    sort: { 
+      isActive: -1,
+      createdAt: -1 },
   });
 
   res.json({ 
