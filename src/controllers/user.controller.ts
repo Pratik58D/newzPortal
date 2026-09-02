@@ -3,17 +3,74 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { paginate } from "../utils/paginate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { getCookieOptions } from "../utils/cookieOptions.js";
 
 // superadmin only: list all staff accounts
 export const getAllUsers = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10 } = req.query;
+  const { 
+    page = 1, 
+    limit = 10,
+    search = "",
+    role,
+    status
+  } = req.query;
+
+  //Build search filter
+  const filter: Record<string, unknown> = {};
+
+   // Search by name or email
+  if(search && typeof search === "string") {
+    filter.$or=[
+      {name: { $regex: search, $options: "i" }},
+      {email: { $regex: search, $options: "i" }}
+    ]
+  }
+
+  // Filter by role
+   if (typeof role === "string" && role) {
+    const allowedRoles: UserRole[] = [
+      "user",
+      "editor",
+      "admin",
+      "superadmin",
+    ];
+
+     if (!allowedRoles.includes(role as UserRole)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role",
+      });
+    }
+
+    filter.role = role;
+  }
+
+
+  // Filter by active/inactive status
+  if (status === "active") {
+    filter.isActive = true;
+  } else if (status === "inactive") {
+    filter.isActive = false;
+  } else if (status) {
+    return res.status(400).json({
+      success: false,
+      message: "Status must be active or inactive",
+    });
+  }
+
   // password has select:false on the schema, so it's excluded by default
-  const result = await paginate(userModel, {}, {
+  const result = await paginate(userModel, filter, {
     page: page as string,
     limit: limit as string,
-    sort: { createdAt: -1 },
+    sort: { 
+      isActive: -1,
+      createdAt: -1 },
   });
-  res.json({ success: true, ...result });
+
+  res.json({ 
+    success: true,
+    ...result
+   });
 });
 
 // superadmin only: update another user's role, password and/or active status
@@ -22,7 +79,7 @@ export const getAllUsers = asyncHandler(async (req, res) => {
 // correctly attached to every article they've authored.
 export const updateUser = asyncHandler(async (req, res) => {
   const { role: newRole, newPassword, isActive } = req.body;
-  const allowedRoles: UserRole[] = ["editor", "admin", "superadmin"];
+  const allowedRoles: UserRole[] = ["user", "editor", "admin", "superadmin"];
 
   if (newRole === undefined && newPassword === undefined && isActive === undefined) {
     return res
@@ -121,8 +178,39 @@ export const createUser = asyncHandler(async (req, res) => {
   });
 });
 
-//login controller
+// Public registration creates a regular account. Staff roles can only be
+// assigned through the protected user-management endpoint.
+export const registerUser = asyncHandler(async (req, res) => {
+  const { name, email, password } = req.body;
 
+  if (!name || !email || !password) {
+    return res.status(400).json({ success: false, message: "Please provide name, email and password" });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(422).json({ success: false, message: "Invalid email format" });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ success: false, message: "Password must be at least 6 characters long" });
+  }
+  if (await userModel.findOne({ email: email.toLowerCase() })) {
+    return res.status(409).json({ success: false, message: "An account with this email already exists" });
+  }
+
+  const user = await userModel.create({
+    name: name.trim(),
+    email: email.toLowerCase(),
+    password: await bcrypt.hash(password, 10),
+    role: "user",
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: "Account created successfully. Please log in to comment.",
+    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+  });
+});
+
+//login controller
 export const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
@@ -166,19 +254,17 @@ export const loginUser = asyncHandler(async (req, res) => {
     { expiresIn: "1h" }
   );
 
-  res
-    .cookie("token", token, {
-      httpOnly: true,
-      sameSite: "strict",
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
-    })
-    .status(200)
+  res.cookie("token", token, {
+    ...getCookieOptions(),
+    maxAge: 24 * 60 * 60 * 1000, // 1 hour in milliseconds
+  })
+  res.status(200)
     .json({
       success: true,
       message: "User logged in successfully",
       token,
       user: {
+        name: matchedUser.name,
         email: matchedUser.email,
         role: matchedUser.role,
         id: matchedUser._id,
@@ -198,10 +284,10 @@ export const getCurrentUser = asyncHandler(async (req, res) => {
     user: req.user,
   });
 });
-//logout controller
 
+//logout controller
 export const logout = asyncHandler(async (req, res) => {
-  res.clearCookie("token");
+  res.clearCookie("token", getCookieOptions());
   res
     .status(200)
     .json({ success: true, message: "User logged out sucessfully" });

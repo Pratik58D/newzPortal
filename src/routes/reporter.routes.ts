@@ -15,21 +15,21 @@ import {
 const reporterRouter = express.Router();
 
 reporterRouter.get(
-  "/reporters",
+  "/",
   authMiddleware,
   role,
   getAllReporters
 );
 
 reporterRouter.post(
-  "/reporters",
+  "/",
   authMiddleware,
   role,
   createReporter
 );
 
 reporterRouter.patch(
-  "/reporters/:id",
+  "/:id",
   authMiddleware,
   role,
   updateReporter

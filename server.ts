@@ -11,20 +11,37 @@ import commentRouter from "./src/routes/comment.route.js";
 import provinceRouter from "./src/routes/province.routes.js";
 import errorHandling from "./src/middleware/errorhandling.js";
 import reporterRouter from "./src/routes/reporter.routes.js";
+import advertisementRoutes from "./src/routes/advertisement.route.js";
 
 dotenv.config();
 
 const app = express();
-const Port = process.env.port!;
+const Port = process.env.PORT || 5000;
+const isProd = process.env.NODE_ENV === "production";
 
 cloudinary;
 
+// Allowed frontend origins
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  process.env.CLIENT_URL,
+].filter(Boolean);
+
+
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: (origin, callback) => {
+      // allow non-browser requests (curl, server-to-server, etc.)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
   })
 );
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -39,6 +56,7 @@ app.use("/api/news", newsRouter);
 app.use("/api/category", categoryRouter);
 app.use("/api/comments", commentRouter);
 app.use("/api/provinces", provinceRouter);
+app.use( "/api/advertisements",advertisementRoutes);
 
 app.use(errorHandling);
 

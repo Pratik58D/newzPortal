@@ -1,5 +1,5 @@
 import express from "express";
-import { loginUser, logout, createUser, getAllUsers, updateUser,getCurrentUser } from "../controllers/user.controller.js";
+import { loginUser, logout, createUser, registerUser, getAllUsers, updateUser,getCurrentUser } from "../controllers/user.controller.js";
 import { authMiddleware, isSuperAdmin } from "../middleware/auth.middleware.js";
 
 const userRouter = express.Router();
@@ -10,6 +10,7 @@ userRouter.patch("/users/:id", authMiddleware, isSuperAdmin, updateUser);
 userRouter.get("/auth/me", authMiddleware, getCurrentUser);
 
 userRouter.post("/login", loginUser);
+userRouter.post("/register", registerUser);
 userRouter.post("/logout", logout);
 
 export default userRouter;

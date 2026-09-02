@@ -7,7 +7,7 @@ import { authMiddleware, role } from "../middleware/auth.middleware.js";
 const commentRouter = express.Router();
 
 commentRouter.get("/", authMiddleware, role, getComments);
-commentRouter.post("/",validate(createCommentSchema), createComment);
+commentRouter.post("/", authMiddleware, validate(createCommentSchema), createComment);
 commentRouter.put("/:id", authMiddleware, role,validate(updateCommentSchema), updateComment);
 commentRouter.delete("/:id",authMiddleware, role, deleteComment);
 commentRouter.patch("/:id/status", authMiddleware,role ,validate(updateCommentStatusSchema), updateCommentStatus);
