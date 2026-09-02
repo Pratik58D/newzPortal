@@ -10,6 +10,7 @@ import {
 } from "../controllers/advertisement.controller.js";
 
 import upload from "../middleware/multer.js";
+import { authMiddleware, isSuperAdmin } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
@@ -17,24 +18,13 @@ const router = express.Router();
 router.get("/active", getActiveAdvertisements);
 
 // Admin
-router.get("/", getAdvertisements);
-router.get("/:id", getAdvertisement);
+router.get("/",authMiddleware, getAdvertisements);
+router.get("/:id", authMiddleware, getAdvertisement);
 
-router.post(
-  "/",
-  upload.array("image", 1),
-  createAdvertisement
-);
+router.post("/",authMiddleware,upload.array("image", 1),createAdvertisement);
 
-router.patch(
-  "/:id",
-  upload.array("image", 1),
-  updateAdvertisement
-);
+router.patch("/:id",authMiddleware,upload.array("image", 1),updateAdvertisement);
 
-router.delete(
-  "/:id",
-  deleteAdvertisement
-);
+router.delete("/:id",authMiddleware,isSuperAdmin,deleteAdvertisement);
 
 export default router;
