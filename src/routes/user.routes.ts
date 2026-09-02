@@ -7,7 +7,7 @@ const userRouter = express.Router();
 userRouter.post("/create-user", authMiddleware, isSuperAdmin, createUser);
 userRouter.get("/users", authMiddleware, isSuperAdmin, getAllUsers);
 userRouter.patch("/users/:id", authMiddleware, isSuperAdmin, updateUser);
-userRouter.get("/auth/me", authMiddleware, getCurrentUser);
+userRouter.get("/me", authMiddleware, getCurrentUser);
 
 userRouter.post("/login", loginUser);
 userRouter.post("/register", registerUser);
