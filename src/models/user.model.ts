@@ -9,6 +9,8 @@ export interface IUser extends Document {
   password: string;
   role: UserRole;
   isActive: boolean;
+  refreshTokenHash: string | null;
+  refreshTokenExpiresAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,6 +41,17 @@ const userSchema = new Schema<IUser>({
   isActive: {
     type: Boolean,
     default: true,
+  },
+  refreshTokenHash: {
+    type: String,
+    default: null,
+    select: false,
+  },
+
+  refreshTokenExpiresAt: {
+    type: Date,
+    default: null,
+    select: false,
   },
 }, { timestamps: true });
 

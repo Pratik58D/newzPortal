@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { paginate } from "../utils/paginate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { getCookieOptions } from "../utils/cookieOptions.js";
+import crypto from "crypto";
 
 // superadmin only: list all staff accounts
 export const getAllUsers = asyncHandler(async (req, res) => {
@@ -243,6 +244,20 @@ export const loginUser = asyncHandler(async (req, res) => {
       .status(400)
       .json({ success: false, message: "Invalid password" });
   }
+  const refreshToken = crypto.randomBytes(64).toString("hex");
+
+  const refreshTokenHash = crypto
+    .createHash("sha256")
+    .update(refreshToken)
+    .digest("hex");
+
+  const refreshTokenExpiresAt = new Date(
+    Date.now() + 7 * 24 * 60 * 60 * 1000
+  );
+  matchedUser.refreshTokenHash = refreshTokenHash;
+  matchedUser.refreshTokenExpiresAt = refreshTokenExpiresAt;
+
+  await matchedUser.save();
 
   const token = jwt.sign(
     {
@@ -251,18 +266,21 @@ export const loginUser = asyncHandler(async (req, res) => {
       email: matchedUser.email,
     },
     process.env.JWT_SECRET!,
-    { expiresIn: "1h" }
+    { expiresIn: "15m" }
   );
 
   res.cookie("token", token, {
     ...getCookieOptions(),
-    maxAge: 24 * 60 * 60 * 1000, // 1 hour in milliseconds
+    maxAge: 15 * 60 * 1000, // 1 hour in milliseconds
   })
+  res.cookie("refreshToken", refreshToken, {
+    ...getCookieOptions(),
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
   res.status(200)
     .json({
       success: true,
       message: "User logged in successfully",
-      token,
       user: {
         name: matchedUser.name,
         email: matchedUser.email,
@@ -270,6 +288,100 @@ export const loginUser = asyncHandler(async (req, res) => {
         id: matchedUser._id,
       },
     });
+});
+export const refreshToken = asyncHandler(async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+
+  if (!refreshToken) {
+    return res.status(401).json({
+      success: false,
+      message: "Refresh token not found",
+    });
+  }
+
+  const refreshTokenHash = crypto
+    .createHash("sha256")
+    .update(refreshToken)
+    .digest("hex");
+
+  const user = await userModel
+    .findOne({ refreshTokenHash })
+    .select("+refreshTokenHash +refreshTokenExpiresAt");
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid refresh token",
+    });
+  }
+
+  if (
+    !user.refreshTokenExpiresAt ||
+    user.refreshTokenExpiresAt.getTime() < Date.now()
+  ) {
+    user.refreshTokenHash = null;
+    user.refreshTokenExpiresAt = null;
+    await user.save();
+
+    return res.status(401).json({
+      success: false,
+      message: "Refresh token expired",
+    });
+  }
+
+  if (!user.isActive) {
+    user.refreshTokenHash = null;
+    user.refreshTokenExpiresAt = null;
+    await user.save();
+
+    return res.status(403).json({
+      success: false,
+      message: "This account has been deactivated",
+    });
+  }
+
+  // Rotate refresh token
+  const newRefreshToken = crypto.randomBytes(64).toString("hex");
+
+  const newRefreshTokenHash = crypto
+    .createHash("sha256")
+    .update(newRefreshToken)
+    .digest("hex");
+
+  const newRefreshTokenExpiresAt = new Date(
+    Date.now() + 7 * 24 * 60 * 60 * 1000
+  );
+
+  user.refreshTokenHash = newRefreshTokenHash;
+  user.refreshTokenExpiresAt = newRefreshTokenExpiresAt;
+
+  await user.save();
+
+  // Create a new access token
+  const newAccessToken = jwt.sign(
+    {
+      id: user._id,
+      role: user.role,
+      email: user.email,
+    },
+    process.env.JWT_SECRET!,
+    { expiresIn: "15m" }
+  );
+
+  res.cookie("token", newAccessToken, {
+    ...getCookieOptions(),
+    maxAge: 15 * 60 * 1000,
+  });
+
+  res.cookie("refreshToken", newRefreshToken, {
+    ...getCookieOptions(),
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Token refreshed successfully",
+  });
 });
 export const getCurrentUser = asyncHandler(async (req, res) => {
   if (!req.user) {
@@ -287,8 +399,30 @@ export const getCurrentUser = asyncHandler(async (req, res) => {
 
 //logout controller
 export const logout = asyncHandler(async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+
+  if (refreshToken) {
+    const refreshTokenHash = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
+    await userModel.updateOne(
+      { refreshTokenHash },
+      {
+        $set: {
+          refreshTokenHash: null,
+          refreshTokenExpiresAt: null,
+        },
+      }
+    );
+  }
+
   res.clearCookie("token", getCookieOptions());
-  res
-    .status(200)
-    .json({ success: true, message: "User logged out sucessfully" });
+  res.clearCookie("refreshToken", getCookieOptions());
+
+  return res.status(200).json({
+    success: true,
+    message: "User logged out successfully",
+  });
 });

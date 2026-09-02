@@ -1,5 +1,5 @@
 import express from "express";
-import { loginUser, logout, createUser, registerUser, getAllUsers, updateUser,getCurrentUser } from "../controllers/user.controller.js";
+import { loginUser, logout, createUser, registerUser, getAllUsers, updateUser,getCurrentUser,refreshToken } from "../controllers/user.controller.js";
 import { authMiddleware, isSuperAdmin } from "../middleware/auth.middleware.js";
 
 const userRouter = express.Router();
@@ -11,6 +11,7 @@ userRouter.get("/me", authMiddleware, getCurrentUser);
 
 userRouter.post("/login", loginUser);
 userRouter.post("/register", registerUser);
+userRouter.post("/refresh", refreshToken);
 userRouter.post("/logout", logout);
 
 export default userRouter;
