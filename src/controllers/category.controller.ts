@@ -60,13 +60,13 @@ export const deleteCategory = asyncHandler(async (req, res) => {
   const category = await Category.findById(id);
   if (!category) {
     return res.status(404).json({
-      message: "Category not found" 
+      message: "Category not found"
     });
   }
 
   //check it this category has subcategories, if yes then do not delete it
-  const childCount = await Category.countDocuments({ 
-    parent: category._id 
+  const childCount = await Category.countDocuments({
+    parent: category._id
   });
 
   if (childCount > 0) {
@@ -81,7 +81,7 @@ export const deleteCategory = asyncHandler(async (req, res) => {
 
   const newsCount = await newsModel.countDocuments(newsQuery);
 
-   if (newsCount > 0) {
+  if (newsCount > 0) {
     return res.status(409).json({
       message:
         "Cannot delete this category because news articles are using it. Reassign or remove the category from those articles first.",
@@ -93,20 +93,20 @@ export const deleteCategory = asyncHandler(async (req, res) => {
 });
 
 //update category or subcategory
-export const updateCategory = asyncHandler(async(req,res)=>{
+export const updateCategory = asyncHandler(async (req, res) => {
 
-  const {id} = req.params;
-  const {name,parent} = req.body;
+  const { id } = req.params;
+  const { name, parent } = req.body;
 
   const category = await Category.findById(id);
 
-  if(!category){
-    return res.status(404).json({message:"Category not found"});
+  if (!category) {
+    return res.status(404).json({ message: "Category not found" });
   }
 
   //validate name
-  if(name?.np?.trim()){
-    return res.status(400).json({message:"Nepali name is required"});
+  if (name?.np?.trim()) {
+    return res.status(400).json({ message: "Nepali name is required" });
   }
 
   const nepaliName = name.np.trim();
@@ -150,7 +150,7 @@ export const updateCategory = asyncHandler(async(req,res)=>{
         message: "A category cannot be its own parent",
       });
     }
- const parentDoc = await Category.findById(parent);
+    const parentDoc = await Category.findById(parent);
 
     if (!parentDoc) {
       return res.status(404).json({
@@ -158,7 +158,7 @@ export const updateCategory = asyncHandler(async(req,res)=>{
       });
     }
 
-     // Parent itself must be a top-level category
+    // Parent itself must be a top-level category
     if (parentDoc.parent) {
       return res.status(400).json({
         message: "A subcategory cannot have another subcategory as its parent",
@@ -168,7 +168,7 @@ export const updateCategory = asyncHandler(async(req,res)=>{
     newParent = parentDoc._id;
   }
 
-    // Generate new slug
+  // Generate new slug
 
   const slug = generateSlug(
     englishName,
@@ -177,7 +177,7 @@ export const updateCategory = asyncHandler(async(req,res)=>{
   );
 
   // Update
-   category.name = {
+  category.name = {
     np: nepaliName,
     en: englishName,
   };
@@ -187,27 +187,62 @@ export const updateCategory = asyncHandler(async(req,res)=>{
 
   await category.save();
 
-    res.json({
+  res.json({
     success: true,
     message: "Category updated successfully",
     data: category,
   });
-  
+
 })
 
 // Get all categories (defaults to top-level only; ?parent=<id> for children, ?parent=all for everything)
 export const getAllCategories = asyncHandler(async (req, res) => {
+
   const { parent } = req.query;
 
-  const query: Record<string, unknown> = {};
-  if (!parent) {
-    query.parent = null;
-  } else if (parent !== "all") {
-    query.parent = parent;
+  // If parent is provided, keep the existing filtered behavior
+  if (parent && parent !== "all") {
+    const subcategories = await Category.find({
+      parent: parent,
+    }).sort({ "name.np": 1 });
+
+    return res.json({
+      success: true,
+      categories: subcategories,
+    });
   }
 
-  const categories = await Category.find(query).sort({ createdAt: -1 });
-  res.json({ success: true, categories });
+  // Get only top-level categories
+  const categories = await Category.find({
+    parent: null,
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Get all subcategories belonging to those categories
+  const categoryIds = categories.map((category) => category._id);
+
+  const subcategories = await Category.find({
+    parent: { $in: categoryIds },
+  })
+    .sort({ "name.np": 1 })
+    .lean();
+
+  // Nest subcategories inside their parent category
+  const categoriesWithSubcategories = categories.map((category) => ({
+    ...category,
+    subcategories: subcategories
+      .filter(
+        (subcategory) =>
+          subcategory.parent?.toString() === category._id.toString()
+      )
+      .map(({ parent, ...subcategory }) => subcategory),
+  }));
+
+  return res.json({
+    success: true,
+    categories: categoriesWithSubcategories,
+  });
 });
 
 // Get subcategories of a category by slug

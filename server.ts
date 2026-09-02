@@ -53,7 +53,7 @@ app.get("/", (req, res) => {
 app.use("/api", userRouter);
 app.use("/api/reporters", reporterRouter);
 app.use("/api/news", newsRouter);
-app.use("/api/category", categoryRouter);
+app.use("/api/categories", categoryRouter);
 app.use("/api/comments", commentRouter);
 app.use("/api/provinces", provinceRouter);
 app.use( "/api/advertisements",advertisementRoutes);
