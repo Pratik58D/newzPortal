@@ -614,6 +614,23 @@ export const getNews = asyncHandler(async (req, res) => {
     query.province = String(req.query.province).toLowerCase();
   }
 
+  if (req.query.category) {
+    const categoryDoc = await Category.findOne({ slug: req.query.category });
+    if (categoryDoc) {
+      query.category = categoryDoc._id;
+    } else {
+      // If category slug is provided but not found, return empty result
+      return res.json({
+        success: true,
+        page,
+        limit,
+        total: 0,
+        totalPages: 0,
+        data: [],
+      });
+    }
+  }
+
   // Parallel queries: get news + total count
   const [newsList, total] = await Promise.all([
     newsModel

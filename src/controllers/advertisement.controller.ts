@@ -134,9 +134,7 @@ export const getAdvertisements = asyncHandler(
   }
 );
 
-
-//  Get one advertisement
-
+//Get one advertisement
 export const getAdvertisement = asyncHandler(
   async (req, res) => {
     const advertisement =
@@ -156,10 +154,7 @@ export const getAdvertisement = asyncHandler(
   }
 );
 
-
 //Update advertisement
-
-
 export const updateAdvertisement = asyncHandler(
   async (req, res) => {
     const advertisement =
@@ -244,10 +239,7 @@ export const updateAdvertisement = asyncHandler(
   }
 );
 
-
-
 //Delete advertisement
-
 export const deleteAdvertisement = asyncHandler(
   async (req, res) => {
     const advertisement =
@@ -275,8 +267,6 @@ export const deleteAdvertisement = asyncHandler(
 
 
 // Public API
-
-
 export const getActiveAdvertisements = asyncHandler(
   async (req, res) => {
     const { placement } = req.query;
