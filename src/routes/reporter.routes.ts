@@ -10,6 +10,7 @@ import {
   authMiddleware,
   isSuperAdmin,
   role,
+  staffOnly
 } from "../middleware/auth.middleware.js";
 
 const reporterRouter = express.Router();
@@ -17,7 +18,7 @@ const reporterRouter = express.Router();
 reporterRouter.get(
   "/",
   authMiddleware,
-  role,
+    staffOnly,
   getAllReporters
 );
 

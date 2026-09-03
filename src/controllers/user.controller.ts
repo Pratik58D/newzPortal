@@ -271,11 +271,11 @@ export const loginUser = asyncHandler(async (req, res) => {
 
   res.cookie("token", token, {
     ...getCookieOptions(),
-    maxAge: 15 * 60 * 1000, // 1 hour in milliseconds
+    maxAge: 15 * 60 * 1000, // 15m in milliseconds
   })
   res.cookie("refreshToken", refreshToken, {
     ...getCookieOptions(),
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: 7 * 24 * 60 * 60 * 1000,//7days
   });
   res.status(200)
     .json({

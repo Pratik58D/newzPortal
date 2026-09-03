@@ -446,19 +446,6 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
       });
     }
   }
-
-  //admin/superadmin can approve/reject any article, 
-
-  if (isAdmin) {
-    if (currentStatus !== "pending") {
-      return res.status(400).json({ success: false, message: "Only pending articles can be approved or rejected" });
-    }
-
-    if (!["approved", "rejected"].includes(status)) {
-      return res.status(400).json({ success: false, message: "Admins can only approve or reject pending articles" });
-    }
-  }
-
   //save rejection reason when rejecting
   if (status === "rejected") {
     news.rejectionReason = rejectionReason || undefined;
