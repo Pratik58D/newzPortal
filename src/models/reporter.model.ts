@@ -23,6 +23,7 @@ const reporterSchema = new Schema<IReporter>(
             type: String,
             trim: true,
             lowercase: true,
+            unique: true,
         },
 
         phone: {
@@ -38,8 +39,7 @@ const reporterSchema = new Schema<IReporter>(
     {
         timestamps: true,
     }
-)
-
+);
 
 const Reporter = mongoose.model<IReporter>("Reporter", reporterSchema);
 

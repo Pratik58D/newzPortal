@@ -6,6 +6,7 @@ import {
   deleteNews,
   getLatestNewsByCategory,
   getManageNews,
+  getMostViewedNews,
   getNews,
   getNewsBySlug,
   updateNews,
@@ -31,8 +32,14 @@ newsRouter.delete("/:id", authMiddleware, staffOnly, deleteNews);
 newsRouter.get("/manage", authMiddleware, staffOnly, getManageNews);
 
 // Public routes
+// Public routes
+
 newsRouter.get("/", getNews);
+
 newsRouter.get("/latest-by-category", getLatestNewsByCategory);
+
+newsRouter.get("/most-viewed", getMostViewedNews);
+
 newsRouter.get("/:slug", getNewsBySlug);
 
 export default newsRouter;

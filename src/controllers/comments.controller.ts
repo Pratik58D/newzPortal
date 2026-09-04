@@ -1,6 +1,7 @@
 import CommentModel from "../models/comments.model.js";
 import newsModel from "../models/news.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { paginate } from "../utils/paginate.js";
 
 // CREATE COMMENT
 export const createComment = asyncHandler(async (req, res) => {
@@ -12,47 +13,53 @@ export const createComment = asyncHandler(async (req, res) => {
   if (!newsExists) {
     return res.status(404).json({
       status: false,
-      message: "News not found" 
-      });
+      message: "News not found",
+    });
   }
 
-  const comment = await CommentModel.create({
+  await CommentModel.create({
     newsId,
     userId: req.user!.id,
     commentText,
   });
 
-  res.status(201).json({ 
-    success: true, 
-    message:  "Your comment has been submitted and is awaiting moderation.",
-   });
+  return res.status(201).json({
+    success: true,
+    message: "Your comment has been submitted and is awaiting moderation.",
+  });
 });
 
+// GET COMMENTS FOR ADMIN
+export const getComments = asyncHandler(async (req, res) => {
+  const {
+    page = 1,
+    limit = 10,
+  } = req.query;
 
-
-//get comment for admin that has everything on that
-export const getComments= asyncHandler(async(req,res)=> {
-
-  const comments = await CommentModel.find()
-    .populate("userId", "name email")
-    .populate("newsId", "slug content.np.title content.en.title")
-    .sort({ createdAt: -1 });
-
-  if (!comments || comments.length === 0) {
-    return res.status(404).json({
-      success: false,
-      message: "No comments found for this news article",
-    });
-  }
+  const result = await paginate(CommentModel, {}, {
+    page: page as string,
+    limit: limit as string,
+    sort: { createdAt: -1 },
+    populate: [
+      {
+        path: "userId",
+        select: "name email",
+      },
+      {
+        path: "newsId",
+        select: "slug content.np.title content.en.title",
+      },
+    ],
+  });
 
   return res.status(200).json({
     success: true,
     message: "All comments retrieved successfully",
-    comments,
+    ...result,
   });
 });
 
-//update Comment text
+// UPDATE COMMENT TEXT
 export const updateComment = asyncHandler(async (req, res) => {
   const { commentText } = req.body;
 
@@ -63,57 +70,56 @@ export const updateComment = asyncHandler(async (req, res) => {
   );
 
   if (!updated) {
-    return res.status(404).json({ 
+    return res.status(404).json({
       success: false,
-      message: "Comment not found" 
+      message: "Comment not found",
     });
   }
 
   return res.json({
-     success: true, 
-     message: "Comment updated successfully",
-     comment: updated 
-    });
+    success: true,
+    message: "Comment updated successfully",
+    comment: updated,
+  });
 });
 
- //update comment status
- export const updateCommentStatus= asyncHandler(async(req,res)=> {
-
+// UPDATE COMMENT STATUS
+export const updateCommentStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
 
   const updatedComment = await CommentModel.findByIdAndUpdate(
     req.params.id,
     { status },
     { new: true }
-  )
+  );
 
-   if (!updatedComment) {
+  if (!updatedComment) {
     return res.status(404).json({
       success: false,
       message: "Comment not found",
     });
   }
-  
+
   return res.status(200).json({
     success: true,
     message: "Comment status updated successfully",
     comment: updatedComment,
-  })
-});  
+  });
+});
 
 // DELETE COMMENT
 export const deleteComment = asyncHandler(async (req, res) => {
   const deleted = await CommentModel.findByIdAndDelete(req.params.id);
 
   if (!deleted) {
-    return res.status(404).json({ 
+    return res.status(404).json({
       success: false,
-      message: "Comment not found" 
+      message: "Comment not found",
     });
   }
 
-  return res.json({ 
-    success: true, 
-    message: "Comment deleted successfully" 
+  return res.json({
+    success: true,
+    message: "Comment deleted successfully",
   });
 });

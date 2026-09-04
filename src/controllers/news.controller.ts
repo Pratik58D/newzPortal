@@ -664,6 +664,7 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
     .populate("subCategory", "name slug")
     .populate({
       path: "comments",
+      match: { status: "approved" },
       select: "userId commentText createdAt",
       populate: { path: "userId", select: "name" },
       options: { sort: { createdAt: -1 } },
@@ -748,4 +749,22 @@ export const deleteNews = asyncHandler(async (req, res) => {
   await newsModel.findByIdAndDelete(newsId);
 
   res.json({ success: true, message: "News deleted successfully" });
+});
+// public: Get top N most-viewed news (approved only)
+export const getMostViewedNews = asyncHandler(async (req, res) => {
+  const limit = Math.min(parseInt(String(req.query.limit)) || 5, 20);
+
+  const newsList = await newsModel
+    .find({ status: "approved" })
+    .sort({ views: -1, publishedAt: -1 }) // tie-break on recency
+    .limit(limit)
+    .populate("category", "name slug")
+    .populate("subCategory", "name slug")
+    .select("-content.np.body -content.en.body") // list view, no need for full body
+    .lean();
+
+  return res.json({
+    success: true,
+    data: newsList,
+  });
 });

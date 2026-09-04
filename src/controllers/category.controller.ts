@@ -195,15 +195,23 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
 })
 
-// Get all categories (defaults to top-level only; ?parent=<id> for children, ?parent=all for everything)
+// Get categories
+// Default: paginated top-level categories
+// ?parent=<id>: get subcategories of a specific category
+// ?parent=all: get all categories with subcategories
 export const getAllCategories = asyncHandler(async (req, res) => {
+  const {
+    parent,
+    page = 1,
+    limit = 10,
+  } = req.query;
 
-  const { parent } = req.query;
-
-  // If parent is provided, keep the existing filtered behavior
+  // --------------------------------------------------
+  // 1. Get subcategories for a specific parent
+  // --------------------------------------------------
   if (parent && parent !== "all") {
     const subcategories = await Category.find({
-      parent: parent,
+      parent,
     }).sort({ "name.np": 1 });
 
     return res.json({
@@ -212,39 +220,67 @@ export const getAllCategories = asyncHandler(async (req, res) => {
     });
   }
 
-  // Get only top-level categories
-  const categories = await Category.find({
-    parent: null,
-  })
-    .sort({ createdAt: -1 })
-    .lean();
+  // --------------------------------------------------
+  // 2. Get ALL categories with subcategories
+  //    ?parent=all
+  // --------------------------------------------------
+  if (parent === "all") {
+    const categories = await Category.find({
+      parent: null,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
-  // Get all subcategories belonging to those categories
-  const categoryIds = categories.map((category) => category._id);
+    const categoryIds = categories.map(
+      (category) => category._id
+    );
 
-  const subcategories = await Category.find({
-    parent: { $in: categoryIds },
-  })
-    .sort({ "name.np": 1 })
-    .lean();
+    const subcategories = await Category.find({
+      parent: { $in: categoryIds },
+    })
+      .sort({ "name.np": 1 })
+      .lean();
 
-  // Nest subcategories inside their parent category
-  const categoriesWithSubcategories = categories.map((category) => ({
-    ...category,
-    subcategories: subcategories
-      .filter(
-        (subcategory) =>
-          subcategory.parent?.toString() === category._id.toString()
-      )
-      .map(({ parent, ...subcategory }) => subcategory),
-  }));
+    const categoriesWithSubcategories = categories.map(
+      (category) => ({
+        ...category,
+        subcategories: subcategories
+          .filter(
+            (subcategory) =>
+              subcategory.parent?.toString() ===
+              category._id.toString()
+          )
+          .map(({ parent, ...subcategory }) => subcategory),
+      })
+    );
+
+    return res.json({
+      success: true,
+      categories: categoriesWithSubcategories,
+    });
+  }
+
+  // --------------------------------------------------
+  // 3. Default: paginate ONLY top-level categories
+  // --------------------------------------------------
+  const categoriesPaginated = await paginate(
+    Category,
+    { parent: null },
+    {
+      page: page as string,
+      limit: limit as string,
+      sort: { createdAt: -1 },
+    }
+  );
 
   return res.json({
     success: true,
-    categories: categoriesWithSubcategories,
+    page: categoriesPaginated.page,
+    totalPages: categoriesPaginated.totalPages,
+    totalCategories: categoriesPaginated.totalItems,
+    categories: categoriesPaginated.data,
   });
 });
-
 // Get subcategories of a category by slug
 export const getSubcategories = asyncHandler(async (req, res) => {
   const { slug } = req.params;
