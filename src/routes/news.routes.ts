@@ -4,6 +4,7 @@ import upload from "../middleware/multer.js";
 import {
   createNews,
   deleteNews,
+  getLatestNewsByCategory,
   getManageNews,
   getNews,
   getNewsBySlug,
@@ -24,13 +25,14 @@ newsRouter.put("/:id", authMiddleware, staffOnly, upload.array("images", 5), upd
 newsRouter.patch("/:id/status", authMiddleware, staffOnly, updateNewsStatus);
 
 //delete news
-newsRouter.delete("/:id", authMiddleware, role, deleteNews);
+newsRouter.delete("/:id", authMiddleware, staffOnly, deleteNews);
 
 // Staff management
 newsRouter.get("/manage", authMiddleware, staffOnly, getManageNews);
 
 // Public routes
 newsRouter.get("/", getNews);
+newsRouter.get("/latest-by-category", getLatestNewsByCategory);
 newsRouter.get("/:slug", getNewsBySlug);
 
 export default newsRouter;

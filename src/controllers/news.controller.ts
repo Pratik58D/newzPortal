@@ -10,7 +10,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { generateSlug } from "../utils/generateSlug.js";
 import Reporter from "../models/reporter.model.js";
-import {uploadNewsImages , deleteNewsImages, updateNewsImages} from "../services/media.service.js";
+import { uploadNewsImages, deleteNewsImages, updateNewsImages } from "../services/media.service.js";
+import { success } from "zod";
 
 // Staff (editor/admin/superadmin): CREATE
 // - editor-created articles start as "draft" and go through review
@@ -356,24 +357,24 @@ export const updateNews = asyncHandler(async (req, res) => {
   }
 
   //images
-const files = (req.files ?? []) as Express.Multer.File[];
+  const files = (req.files ?? []) as Express.Multer.File[];
 
-const existingImages = existingNews.media?.images ?? [];
+  const existingImages = existingNews.media?.images ?? [];
 
-const keptKeys: string[] = req.body.keptImageKeys
-  ? JSON.parse(req.body.keptImageKeys)
-  : existingImages.map((image) => image.key);
+  const keptKeys: string[] = req.body.keptImageKeys
+    ? JSON.parse(req.body.keptImageKeys)
+    : existingImages.map((image) => image.key);
 
-const imagesChanged = files.length > 0 || req.body.keptImageKeys !== undefined;
+  const imagesChanged = files.length > 0 || req.body.keptImageKeys !== undefined;
 
-if (imagesChanged) {
-  const images = await updateNewsImages(existingImages, keptKeys, files);
+  if (imagesChanged) {
+    const images = await updateNewsImages(existingImages, keptKeys, files);
 
-  updateFields.media = {
-    type: "image",
-    images,
-  };
-}
+    updateFields.media = {
+      type: "image",
+      images,
+    };
+  }
 
 
   //update article
@@ -472,12 +473,12 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
 // Staff: moderation queue / "my articles" view - any status, filtered by ownership for editors
 export const getManageNews = asyncHandler(async (req, res) => {
 
-  const { 
+  const {
     page = 1,
-    limit = 10, 
+    limit = 10,
     search,
     status,
-    province ,
+    province,
     category,
     subCategory,
     reporter,
@@ -493,7 +494,7 @@ export const getManageNews = asyncHandler(async (req, res) => {
     query.editor = req.user!.id;
   }
 
-   // Status filter
+  // Status filter
   if (status && typeof status === "string") {
     query.status = status;
   }
@@ -503,7 +504,7 @@ export const getManageNews = asyncHandler(async (req, res) => {
     query.province = String(province).toLowerCase();
   }
 
-   // Category filter
+  // Category filter
   if (category && typeof category === "string") {
     query.category = category;
   }
@@ -513,7 +514,7 @@ export const getManageNews = asyncHandler(async (req, res) => {
     query.subCategory = subCategory;
   }
 
-   // Reporter filter
+  // Reporter filter
   if (reporter && typeof reporter === "string") {
     query.reporter = reporter;
   }
@@ -521,7 +522,7 @@ export const getManageNews = asyncHandler(async (req, res) => {
   // Editor filter 
   //  Only useful for admin/superadmin
   if (
-    editor && 
+    editor &&
     typeof editor === "string" &&
     req.user!.role !== "editor"
   ) {
@@ -530,7 +531,7 @@ export const getManageNews = asyncHandler(async (req, res) => {
 
 
   //search
-  if(search && typeof search === "string") {
+  if (search && typeof search === "string") {
     const regex = new RegExp(search, "i");
 
     query.$or = [
@@ -544,11 +545,11 @@ export const getManageNews = asyncHandler(async (req, res) => {
   if (dateFrom || dateTo) {
     const createdAt: Record<string, Date> = {};
 
-    if(dateFrom && typeof dateFrom === "string") {
+    if (dateFrom && typeof dateFrom === "string") {
       createdAt.$gte = new Date(dateFrom);
     }
 
-    if(dateTo && typeof dateTo === "string") {
+    if (dateTo && typeof dateTo === "string") {
       const endDate = new Date(dateTo);
       endDate.setHours(23, 59, 59, 999); // Set to end of the day
 
@@ -566,13 +567,14 @@ export const getManageNews = asyncHandler(async (req, res) => {
       { path: "category", select: "name slug" },
       { path: "subCategory", select: "name slug" },
       { path: "editor", select: "name email role" },
-      {path:"reporter", select: "name email phone "}
+      { path: "reporter", select: "name email phone " }
     ],
   });
 
-  res.json({ 
-    success: true, 
-  ...result });
+  res.json({
+    success: true,
+    ...result
+  });
 });
 
 
@@ -677,6 +679,58 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
 
   return res.json({ success: true, data: news });
 });
+
+export const getLatestNewsByCategory = asyncHandler(async (req, res) => {
+
+  const categories = await Category.find({
+    parent: null
+  }).select("_id name slug");
+
+  const categoryIds = categories.map(category => category._id);
+
+  const latestNews = await newsModel.aggregate([
+    {
+      $match: {
+        status: "approved",
+        category: { $in: categoryIds }
+      }
+    },
+
+    {
+      $sort: {
+        publishedAt: -1
+      }
+    },
+
+    {
+      $group: {
+        _id: "$category",
+        news: { $first: "$$ROOT" }
+      }
+    }
+  ])
+
+  const newsMap = new Map(
+    latestNews.map(item => [
+      item._id.toString(),
+      item.news
+    ])
+  );
+
+  const data = categories.map(category => ({
+    category: {
+      _id: category._id,
+      name: category.name,
+      slug: category.slug
+    },
+    news: newsMap.get(category._id.toString()) || null
+  }));
+
+  return res.json({
+    success: true,
+    data
+  })
+})
 
 // admin :delete
 export const deleteNews = asyncHandler(async (req, res) => {
