@@ -50,7 +50,7 @@ npm run seed:site -- --dry-run   # show what would be created; writes nothing
 npm run seed:site                # create whatever is missing
 ```
 
-Seeds the initial data behind the planned CMS-driven frontend (`docs/dynamic-frontend-plan.md`, Phase 0): one `SiteSettings` document, the 8 `HomepageSection`s that match today's homepage, and 5 starter `Page`s (`about`, `contact`, `privacy`, `terms`, `advertise`). It is **insert-only and idempotent** — existing documents are never modified, so re-running cannot overwrite admin edits. It connects to `MONGODB_URI_PROD` (the same DB the dev server uses) and prints the database name before doing anything; use `--dry-run` first. `SiteSettings` is served by `/api/settings` (Phase 2); `HomepageSection` and `Page` have no endpoints yet (Phases 3–4), so those two collections are only data with a schema for now. Seed data lives in `src/seeds/siteContent.data.ts`.
+Seeds the initial data behind the planned CMS-driven frontend (`docs/dynamic-frontend-plan.md`, Phase 0): one `SiteSettings` document, the 8 `HomepageSection`s that match today's homepage, and 5 starter `Page`s (`about`, `contact`, `privacy`, `terms`, `advertise`). It is **insert-only and idempotent** — existing documents are never modified, so re-running cannot overwrite admin edits. It connects to `MONGODB_URI_PROD` (the same DB the dev server uses) and prints the database name before doing anything; use `--dry-run` first. `SiteSettings` is served by `/api/settings` (Phase 2) and `HomepageSection` by `/api/homepage` (Phase 3); `Page` has no endpoint yet (Phase 4), so that collection is only data with a schema for now. Seed data lives in `src/seeds/siteContent.data.ts`.
 
 ### Quality checks
 
@@ -73,7 +73,8 @@ CI (`.github/workflows/ci.yml`) runs all of the above plus `npm run build` on ev
 | `Comment` | `newsId` (ref News), `userId` (ref User), `commentText`, `status` (`pending`\|`approved`\|`rejected`) |
 | `Advertisement` | `title`, `image.{url,key}`, `redirectUrl`, `placement`, `startDate`/`endDate`, `isActive` |
 | `SiteSettings` | Singleton (`key: "site"`): `siteName`/`tagline`/`about` `{np,en}`, `logo?`, `contact`, `social`, `seo`, `footerLinks`, `copyright`, `footerNote` — see `/api/settings` |
-| `HomepageSection`, `Page` | Seeded by `npm run seed:site` but **not served by any endpoint yet** (`docs/dynamic-frontend-plan.md` Phases 3–4) |
+| `HomepageSection` | One document per homepage section: unique `key`, `type` (`hero`\|`latest`\|`category`\|`province`\|`banner-ad`), `enabled`, `order`, `title.{np,en}`, `config` — see `/api/homepage` |
+| `Page` | Seeded by `npm run seed:site` but **not served by any endpoint yet** (`docs/dynamic-frontend-plan.md` Phase 4) |
 | `AuditLog` | Written by site-settings changes only (`settings.update`, `settings.logo.*`); not yet wired into any other controller |
 
 Provinces are **not** a Mongo collection — `/api/provinces` returns a static list from `src/constants/provinces.ts`.
@@ -156,6 +157,13 @@ All routes are mounted under `/api` in `server.ts`. `authMiddleware` requires a 
 | PUT | `/` | superadmin | Replaces every editable field at once; strict zod validation (unknown keys rejected, link targets must be http(s) or a `/` path). Writes an `AuditLog` entry listing which top-level fields changed |
 | PUT | `/logo` | superadmin | `multipart/form-data`, field `logo` (image, max 5 MB); replaces and deletes the previous logo |
 | DELETE | `/logo` | superadmin | Removes the logo |
+
+### Homepage layout (`/api/homepage`)
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/` | — | `{ success, data }`: enabled sections only, in display order. Returns the seeded default layout until a layout has been saved |
+| GET | `/manage` | admin | All sections including disabled ones, plus `isDefault` |
+| PUT | `/` | admin | Body `{ sections: [...] }` replaces the whole ordered list (array position = display order). Strict per-type validation; at most one hero/latest/province section; 1–20 sections. Upserts first, deletes removed sections last |
 
 Response envelopes are **not fully standardized** across all of the above yet — most return `{ success, message?, data }`, but some category/advertisement endpoints still use resource-specific keys (`categories`, `parent`/`subcategories`). Check the actual controller before writing a frontend consumer; see `docs/news-portal-findings.md`, B4, for the full list of what's been standardized vs. what's still pending.
 
