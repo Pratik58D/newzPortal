@@ -1,4 +1,5 @@
 import newsModel from "../models/news.model.js";
+import { revalidateFrontend, REVALIDATE_TAGS } from "../utils/revalidate.js";
 import type { ProvinceCode } from "../constants/provinces.js";
 import {
   uploadToCloudinary,
@@ -210,6 +211,8 @@ export const createNews = asyncHandler(async (req, res) => {
   });
 
   await news.save();
+
+  revalidateFrontend([REVALIDATE_TAGS.news, REVALIDATE_TAGS.newsItem(news.slug)]);
 
   res.status(201).json({
     success: true,
@@ -522,6 +525,11 @@ export const updateNews = asyncHandler(async (req, res) => {
     }
   );
 
+  revalidateFrontend([
+    REVALIDATE_TAGS.news,
+    REVALIDATE_TAGS.newsItem(updatedNews?.slug ?? ""),
+  ]);
+
   res.json({ success: true, message: "News updated successfully", data: updatedNews });
 });
 
@@ -596,6 +604,9 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
 
   news.status = status;
   await news.save();
+
+  // Approval publishes and rejection unpublishes, so both change the site.
+  revalidateFrontend([REVALIDATE_TAGS.news, REVALIDATE_TAGS.newsItem(news.slug)]);
 
   return res.status(200).json({
     success: true,
@@ -897,6 +908,8 @@ export const deleteNews = asyncHandler(async (req, res) => {
   await deleteNewsImages(news.media?.images || []);
 
   await newsModel.findByIdAndDelete(newsId);
+
+  revalidateFrontend([REVALIDATE_TAGS.news, REVALIDATE_TAGS.newsItem(news.slug)]);
 
   res.json({ success: true, message: "News deleted successfully" });
 });

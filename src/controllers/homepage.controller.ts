@@ -1,4 +1,5 @@
 import HomepageSection from "../models/homepageSection.model.js";
+import { revalidateFrontend, REVALIDATE_TAGS } from "../utils/revalidate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { assignKeys, orderFor } from "../utils/homepageLayout.js";
 import { homepageSectionsSeed } from "../seeds/siteContent.data.js";
@@ -87,6 +88,8 @@ export const updateHomepage = asyncHandler(async (req, res) => {
   await HomepageSection.deleteMany({
     key: { $nin: keyed.map((section) => section.key) },
   });
+
+  revalidateFrontend([REVALIDATE_TAGS.homepage]);
 
   const { sections: saved } = await loadSections();
 

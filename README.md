@@ -30,10 +30,28 @@ Create a `.env` at the project root. `validateEnv()` (`src/config/env.ts`) check
 | `CLOUDINARY_CLOUD_NAME` | Yes | Cloudinary account |
 | `CLOUDINARY_API_KEY` | Yes | Cloudinary account |
 | `CLOUDINARY_API_SECRET` | Yes | Cloudinary account |
+| `FRONTEND_REVALIDATE_URL` | No | Base URL of the frontend (e.g. `http://localhost:3000`). When set, content writes notify `${FRONTEND_REVALIDATE_URL}/api/revalidate` so the public site refreshes immediately. Unset = feature off. See [Frontend cache revalidation](#frontend-cache-revalidation) |
+| `REVALIDATE_SECRET` | **Required if `FRONTEND_REVALIDATE_URL` is set** | Shared secret sent in the `x-revalidate-secret` header; must equal the frontend's `REVALIDATE_SECRET`. Server-side only. Startup fails if the URL is set without it (or the URL isn't http(s)) |
 | `PORT` | No (default `5000`) | HTTP port |
 | `CLIENT_URL` | No | Extra allowed CORS origin (in addition to `localhost:3000`/`127.0.0.1:3000`, which are always allowed) |
 | `mode` | No | If set to `"production"`, changes a log message; **does not** change which DB is connected to — both branches in `src/config/db.ts` currently connect to `MONGODB_URI_PROD` |
 | `SuperAdminEmail` / `SuperAdminPassword` | For the seed script only | Used by `superAdmin.ts` (run directly, e.g. `npx tsx superAdmin.ts` — no `npm run` script defined for it) to create the first superadmin account if one doesn't already exist |
+
+A template with every variable is in `.env.example`.
+
+### Frontend cache revalidation
+
+The frontend caches API data (tagged fetches, 60s fallback). After a successful write the backend fires a **fire-and-forget** `POST ${FRONTEND_REVALIDATE_URL}/api/revalidate` (`src/utils/revalidate.ts`) with header `x-revalidate-secret` and body `{ tags: [...] }`:
+
+| Write | Tags sent |
+|---|---|
+| News create / update / status change (publish, reject) / delete | `news`, `news:<slug>` |
+| Category create / update / delete | `categories`, `category:<slug>` (old and new slug on rename), and `news` on rename/delete |
+| Site settings update, logo upload/remove | `settings` |
+| Homepage layout save | `homepage` |
+| Page create / update / delete | `pages` |
+
+The request has a 3s timeout and never affects the original request: failures are logged with `pino` (endpoint, tags, reason - never the secret) and the mutation still succeeds. With `FRONTEND_REVALIDATE_URL` unset nothing is sent. Not covered: comment moderation, advertisements and reporter/user changes (those pages still refresh within 60s or are not cached).
 
 ### Run
 
@@ -50,7 +68,7 @@ npm run seed:site -- --dry-run   # show what would be created; writes nothing
 npm run seed:site                # create whatever is missing
 ```
 
-Seeds the initial data behind the planned CMS-driven frontend (`docs/dynamic-frontend-plan.md`, Phase 0): one `SiteSettings` document, the 8 `HomepageSection`s that match today's homepage, and 5 starter `Page`s (`about`, `contact`, `privacy`, `terms`, `advertise`). It is **insert-only and idempotent** — existing documents are never modified, so re-running cannot overwrite admin edits. It connects to `MONGODB_URI_PROD` (the same DB the dev server uses) and prints the database name before doing anything; use `--dry-run` first. `SiteSettings` is served by `/api/settings` (Phase 2) and `HomepageSection` by `/api/homepage` (Phase 3); `Page` has no endpoint yet (Phase 4), so that collection is only data with a schema for now. Seed data lives in `src/seeds/siteContent.data.ts`.
+Seeds the initial data behind the planned CMS-driven frontend (`docs/dynamic-frontend-plan.md`, Phase 0): one `SiteSettings` document, the 8 `HomepageSection`s that match today's homepage, and 5 starter `Page`s (`about`, `contact`, `privacy`, `terms`, `advertise`). It is **insert-only and idempotent** — existing documents are never modified, so re-running cannot overwrite admin edits. It connects to `MONGODB_URI_PROD` (the same DB the dev server uses) and prints the database name before doing anything; use `--dry-run` first. `SiteSettings` is served by `/api/settings` (Phase 2) and `HomepageSection` by `/api/homepage` (Phase 3); `Page` by `/api/pages` (Phase 4). Seed data lives in `src/seeds/siteContent.data.ts`.
 
 ### Quality checks
 
@@ -74,7 +92,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above plus `npm run build` on ev
 | `Advertisement` | `title`, `image.{url,key}`, `redirectUrl`, `placement`, `startDate`/`endDate`, `isActive` |
 | `SiteSettings` | Singleton (`key: "site"`): `siteName`/`tagline`/`about` `{np,en}`, `logo?`, `contact`, `social`, `seo`, `footerLinks`, `copyright`, `footerNote` — see `/api/settings` |
 | `HomepageSection` | One document per homepage section: unique `key`, `type` (`hero`\|`latest`\|`category`\|`province`\|`banner-ad`), `enabled`, `order`, `title.{np,en}`, `config` — see `/api/homepage` |
-| `Page` | Seeded by `npm run seed:site` but **not served by any endpoint yet** (`docs/dynamic-frontend-plan.md` Phase 4) |
+| `Page` | `slug` (unique), `title.{np,en}`, `body.{np,en}` (Markdown), `isPublished`, `showInFooter` — see `/api/pages` |
 | `AuditLog` | Written by site-settings changes only (`settings.update`, `settings.logo.*`); not yet wired into any other controller |
 
 Provinces are **not** a Mongo collection — `/api/provinces` returns a static list from `src/constants/provinces.ts`.
@@ -164,6 +182,18 @@ All routes are mounted under `/api` in `server.ts`. `authMiddleware` requires a 
 | GET | `/` | — | `{ success, data }`: enabled sections only, in display order. Returns the seeded default layout until a layout has been saved |
 | GET | `/manage` | admin | All sections including disabled ones, plus `isDefault` |
 | PUT | `/` | admin | Body `{ sections: [...] }` replaces the whole ordered list (array position = display order). Strict per-type validation; at most one hero/latest/province section; 1–20 sections. Upserts first, deletes removed sections last |
+
+### Pages (`/api/pages`)
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/` | — | `{ success, data }`: published pages (`slug`, `title`, `showInFooter`, no body). Returns the five seeded starter pages while the `Page` collection is empty |
+| GET | `/:slug` | — | One **published** page with its Markdown body; drafts and unknown slugs → 404 (same seeded fallback while the collection is empty) |
+| GET | `/manage` | admin | All pages including drafts, plus `isDefault` |
+| POST | `/` | admin | Create. Strict zod body: `slug`, `title{np,en}`, `body{np,en}` (Markdown, ≤ 50 000 chars), `isPublished`, `showInFooter`. Duplicate slug → 409 |
+| PUT | `/:id` | admin | Replace fields. 400 bad id, 404 missing, 409 duplicate slug |
+| DELETE | `/:id` | admin | Delete |
+
+The seeded fallback applies only while **no** page has ever been stored; once any page is saved the collection is the only source, so a deleted page stays deleted.
 
 Response envelopes are **not fully standardized** across all of the above yet — most return `{ success, message?, data }`, but some category/advertisement endpoints still use resource-specific keys (`categories`, `parent`/`subcategories`). Check the actual controller before writing a frontend consumer; see `docs/news-portal-findings.md`, B4, for the full list of what's been standardized vs. what's still pending.
 

@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import { revalidateFrontend, REVALIDATE_TAGS } from "../utils/revalidate.js";
 import SiteSettings from "../models/siteSettings.model.js";
 import AuditLog from "../models/auditLog.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -66,6 +67,8 @@ export const updateSiteSettings = asyncHandler(async (req, res) => {
     changed: changedTopLevelKeys(before, after, Object.keys(req.body)),
   });
 
+  revalidateFrontend([REVALIDATE_TAGS.settings]);
+
   res.json({
     success: true,
     message: "Site settings updated",
@@ -101,6 +104,7 @@ export const uploadSiteLogo = asyncHandler(async (req, res) => {
   }
 
   await recordAudit(req, settings._id, "settings.logo.update", {});
+  revalidateFrontend([REVALIDATE_TAGS.settings]);
 
   res.json({
     success: true,
@@ -125,6 +129,7 @@ export const deleteSiteLogo = asyncHandler(async (req, res) => {
   );
 
   await recordAudit(req, settings._id, "settings.logo.remove", {});
+  revalidateFrontend([REVALIDATE_TAGS.settings]);
 
   res.json({
     success: true,

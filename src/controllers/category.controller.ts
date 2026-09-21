@@ -1,4 +1,5 @@
 import Category from "../models/category.model.js";
+import { revalidateFrontend, REVALIDATE_TAGS } from "../utils/revalidate.js";
 import newsModel from "../models/news.model.js";
 import { paginate } from "../utils/paginate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -52,6 +53,7 @@ export const createCategory = asyncHandler(async (req, res) => {
     parent: parent || null,
   });
   await newCategory.save();
+  revalidateFrontend([REVALIDATE_TAGS.categories, REVALIDATE_TAGS.category(newCategory.slug)]);
   res.status(201).json({ success: true, data: newCategory });
 });
 
@@ -94,6 +96,11 @@ export const deleteCategory = asyncHandler(async (req, res) => {
   }
 
   await Category.findByIdAndDelete(category._id);
+  revalidateFrontend([
+    REVALIDATE_TAGS.categories,
+    REVALIDATE_TAGS.category(category.slug),
+    REVALIDATE_TAGS.news,
+  ]);
   res.json({ success: true, message: "Category deleted" });
 });
 
@@ -192,10 +199,21 @@ export const updateCategory = asyncHandler(async (req, res) => {
     en: englishName,
   };
 
+  const previousSlug = category.slug;
+
   category.slug = slug;
   category.parent = newParent;
 
   await category.save();
+
+  // A rename changes the slug and the category name shown on articles, so
+  // both the old and new category pages and the news lists are stale.
+  revalidateFrontend([
+    REVALIDATE_TAGS.categories,
+    REVALIDATE_TAGS.category(previousSlug),
+    REVALIDATE_TAGS.category(category.slug),
+    REVALIDATE_TAGS.news,
+  ]);
 
   res.json({
     success: true,

@@ -53,4 +53,52 @@ describe("validateEnv", () => {
     expect(message).toContain("JWT_SECRET");
     expect(message).toContain("CLOUDINARY_API_KEY");
   });
+
+  describe("frontend revalidation (optional)", () => {
+    const setup = () => {
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      return { exitSpy, errorSpy };
+    };
+
+    it("is fine when neither variable is set", () => {
+      const { exitSpy } = setup();
+      validateEnv();
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("is fine when both are set", () => {
+      process.env.FRONTEND_REVALIDATE_URL = "http://localhost:3000";
+      process.env.REVALIDATE_SECRET = "s3cret";
+      const { exitSpy } = setup();
+      validateEnv();
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("exits when the URL is set without the secret, without printing a secret", () => {
+      process.env.FRONTEND_REVALIDATE_URL = "http://localhost:3000";
+      const { exitSpy, errorSpy } = setup();
+      validateEnv();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy.mock.calls.flat().join(" ")).toContain("REVALIDATE_SECRET is required");
+    });
+
+    it("exits when the URL is not an http(s) URL", () => {
+      process.env.REVALIDATE_SECRET = "s3cret";
+      for (const bad of ["not a url", "ftp://host"]) {
+        process.env.FRONTEND_REVALIDATE_URL = bad;
+        const { exitSpy } = setup();
+        validateEnv();
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        vi.restoreAllMocks();
+      }
+    });
+
+    it("a secret alone (no URL) is ignored", () => {
+      process.env.REVALIDATE_SECRET = "s3cret";
+      const { exitSpy } = setup();
+      validateEnv();
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+  });
 });
