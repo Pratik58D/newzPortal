@@ -8,14 +8,14 @@ import { generateSlug } from "../utils/generateSlug.js";
 export const createCategory = asyncHandler(async (req, res) => {
   const { name, parent } = req.body;
   if (!name?.np) {
-    return res.status(400).json({ message: "Category name (Nepali) is required" });
+    return res.status(400).json({ success: false, message: "Category name (Nepali) is required" });
   }
   const existingNepali = await Category.findOne({
     "name.np": name.np
   });
 
   if (existingNepali) {
-    return res.status(409).json({ message: "Category with this Nepali name already exists" });
+    return res.status(409).json({ success: false, message: "Category with this Nepali name already exists" });
   }
 
   if (name.en?.trim()) {
@@ -25,6 +25,7 @@ export const createCategory = asyncHandler(async (req, res) => {
 
     if (existingEnglish) {
       return res.status(409).json({
+        success: false,
         message: "Category with this English name already exists",
       });
     }
@@ -33,10 +34,11 @@ export const createCategory = asyncHandler(async (req, res) => {
   if (parent) {
     const parentDoc = await Category.findById(parent);
     if (!parentDoc) {
-      return res.status(404).json({ message: "Parent category not found" });
+      return res.status(404).json({ success: false, message: "Parent category not found" });
     }
     if (parentDoc.parent) {
       return res.status(400).json({
+        success: false,
         message: "Subcategories cannot have their own subcategories",
       });
     }
@@ -60,6 +62,7 @@ export const deleteCategory = asyncHandler(async (req, res) => {
   const category = await Category.findById(id);
   if (!category) {
     return res.status(404).json({
+      success: false,
       message: "Category not found"
     });
   }
@@ -71,6 +74,7 @@ export const deleteCategory = asyncHandler(async (req, res) => {
 
   if (childCount > 0) {
     return res.status(409).json({
+      success: false,
       message: "Cannot delete a category that has subcategories. Delete or reassign them first.",
     });
   }
@@ -83,6 +87,7 @@ export const deleteCategory = asyncHandler(async (req, res) => {
 
   if (newsCount > 0) {
     return res.status(409).json({
+      success: false,
       message:
         "Cannot delete this category because news articles are using it. Reassign or remove the category from those articles first.",
     });
@@ -101,12 +106,12 @@ export const updateCategory = asyncHandler(async (req, res) => {
   const category = await Category.findById(id);
 
   if (!category) {
-    return res.status(404).json({ message: "Category not found" });
+    return res.status(404).json({ success: false, message: "Category not found" });
   }
 
   //validate name
-  if (name?.np?.trim()) {
-    return res.status(400).json({ message: "Nepali name is required" });
+  if (!name?.np?.trim()) {
+    return res.status(400).json({ success: false, message: "Nepali name is required" });
   }
 
   const nepaliName = name.np.trim();
@@ -121,6 +126,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
   if (existingNepali) {
     return res.status(409).json({
+      success: false,
       message: "Category with this Nepali name already exists",
     });
   }
@@ -134,6 +140,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
     if (existingEnglish) {
       return res.status(409).json({
+        success: false,
         message: "Category with this English name already exists",
       });
     }
@@ -147,6 +154,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
     // Cannot make itself its own parent
     if (parent.toString() === category._id.toString()) {
       return res.status(400).json({
+        success: false,
         message: "A category cannot be its own parent",
       });
     }
@@ -154,6 +162,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
     if (!parentDoc) {
       return res.status(404).json({
+        success: false,
         message: "Parent category not found",
       });
     }
@@ -161,6 +170,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
     // Parent itself must be a top-level category
     if (parentDoc.parent) {
       return res.status(400).json({
+        success: false,
         message: "A subcategory cannot have another subcategory as its parent",
       });
     }
@@ -286,7 +296,7 @@ export const getSubcategories = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const parentDoc = await Category.findOne({ slug });
   if (!parentDoc) {
-    return res.status(404).json({ message: "Category not found" });
+    return res.status(404).json({ success: false, message: "Category not found" });
   }
 
   const subcategories = await Category.find({ parent: parentDoc._id }).sort({ "name.np": 1 });
@@ -299,7 +309,7 @@ export const getCategoryBySlug = asyncHandler(async (req, res) => {
   const category = await Category.findOne({ slug });
 
   if (!category) {
-    return res.status(404).json({ message: "Category not found" });
+    return res.status(404).json({ success: false, message: "Category not found" });
   }
 
   res.json({ success: true, category });

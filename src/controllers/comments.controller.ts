@@ -12,7 +12,7 @@ export const createComment = asyncHandler(async (req, res) => {
 
   if (!newsExists) {
     return res.status(404).json({
-      status: false,
+      success: false,
       message: "News not found",
     });
   }
@@ -34,9 +34,16 @@ export const getComments = asyncHandler(async (req, res) => {
   const {
     page = 1,
     limit = 10,
+    status,
   } = req.query;
 
-  const result = await paginate(CommentModel, {}, {
+  const query: Record<string, unknown> = {};
+
+  if (status && typeof status === "string") {
+    query.status = status;
+  }
+
+  const result = await paginate(CommentModel, query, {
     page: page as string,
     limit: limit as string,
     sort: { createdAt: -1 },

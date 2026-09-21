@@ -85,22 +85,22 @@ export const updateUser = asyncHandler(async (req, res) => {
   if (newRole === undefined && newPassword === undefined && isActive === undefined) {
     return res
       .status(400)
-      .json({ message: "Provide role, newPassword and/or isActive to update" });
+      .json({ success: false, message: "Provide role, newPassword and/or isActive to update" });
   }
   if (newRole && !allowedRoles.includes(newRole)) {
     return res
       .status(400)
-      .json({ message: `role must be one of: ${allowedRoles.join(", ")}` });
+      .json({ success: false, message: `role must be one of: ${allowedRoles.join(", ")}` });
   }
   if (newPassword && newPassword.length < 6) {
     return res
       .status(400)
-      .json({ message: "New password must be at least 6 characters long" });
+      .json({ success: false, message: "New password must be at least 6 characters long" });
   }
 
   const targetUser = await userModel.findById(req.params.id);
   if (!targetUser) {
-    return res.status(404).json({ message: "User not found" });
+    return res.status(404).json({ success: false, message: "User not found" });
   }
 
   // never let the last active superadmin be demoted or deactivated -
@@ -117,7 +117,7 @@ export const updateUser = asyncHandler(async (req, res) => {
     if (activeSuperadmins <= 1) {
       return res
         .status(400)
-        .json({ message: "Cannot remove the last active superadmin" });
+        .json({ success: false, message: "Cannot remove the last active superadmin" });
     }
   }
 
@@ -134,22 +134,22 @@ export const createUser = asyncHandler(async (req, res) => {
   const { name, email, password, role } = req.body;
 
   if (!email || !name || !password) {
-    return res.status(404).json({ message: "Please provide all the fields" });
+    return res.status(400).json({ success: false, message: "Please provide all the fields" });
   }
 
   // Check if user exists
   const existingUser = await userModel.findOne({ email });
   if (existingUser)
-    return res.status(400).json({ message: "User already exists" });
+    return res.status(409).json({ success: false, message: "User already exists" });
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
-    return res.status(422).json({ error: "Invalid email format" });
+    return res.status(422).json({ success: false, message: "Invalid email format" });
   }
   if (password.length < 6) {
     return res
       .status(400)
-      .json({ error: "Password must be at least 6 characters long" });
+      .json({ success: false, message: "Password must be at least 6 characters long" });
   }
 
   // Only superadmin can assign admin/superadmin; anything else falls back to the model's default staff role
@@ -158,6 +158,7 @@ export const createUser = asyncHandler(async (req, res) => {
   if (role && allowedRoles.includes(role)) {
     if (["admin", "superadmin"].includes(role) && req.user?.role !== "superadmin") {
       return res.status(403).json({
+        success: false,
         message: "Only superadmin can assign admin or superadmin role",
       });
     }

@@ -12,6 +12,8 @@ import {
   role,
   staffOnly
 } from "../middleware/auth.middleware.js";
+import { validate } from "../middleware/validate.middleware.js";
+import { createReporterSchema, updateReporterSchema } from "../validation/reporter.validation.js";
 
 const reporterRouter = express.Router();
 
@@ -26,6 +28,7 @@ reporterRouter.post(
   "/",
   authMiddleware,
   role,
+  validate(createReporterSchema),
   createReporter
 );
 
@@ -33,6 +36,7 @@ reporterRouter.patch(
   "/:id",
   authMiddleware,
   role,
+  validate(updateReporterSchema),
   updateReporter
 );
 
