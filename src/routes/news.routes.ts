@@ -1,6 +1,6 @@
 import express from "express";
-import { authMiddleware, role, staffOnly } from "../middleware/auth.middleware.js";
-import upload from "../middleware/multer.js";
+import { authMiddleware, staffOnly } from "../middleware/auth.middleware.js";
+import { uploadNewsMedia } from "../middleware/multer.js";
 import {
   createNews,
   deleteNews,
@@ -9,6 +9,7 @@ import {
   getMostViewedNews,
   getNews,
   getNewsBySlug,
+  getNewsStats,
   updateNews,
   updateNewsStatus
 } from "../controllers/news.controller.js";
@@ -17,10 +18,15 @@ const newsRouter = express.Router();
 
 //staff routes
 
-newsRouter.post("/", authMiddleware, staffOnly, upload.array("images", 5), createNews);
+const newsMediaFields = uploadNewsMedia.fields([
+  { name: "images", maxCount: 5 },
+  { name: "video", maxCount: 1 },
+]);
+
+newsRouter.post("/", authMiddleware, staffOnly, newsMediaFields, createNews);
 
 // Update content
-newsRouter.put("/:id", authMiddleware, staffOnly, upload.array("images", 5), updateNews);
+newsRouter.put("/:id", authMiddleware, staffOnly, newsMediaFields, updateNews);
 
 //update news status
 newsRouter.patch("/:id/status", authMiddleware, staffOnly, updateNewsStatus);
@@ -30,6 +36,9 @@ newsRouter.delete("/:id", authMiddleware, staffOnly, deleteNews);
 
 // Staff management
 newsRouter.get("/manage", authMiddleware, staffOnly, getManageNews);
+
+// Staff dashboard stats
+newsRouter.get("/stats", authMiddleware, staffOnly, getNewsStats);
 
 // Public routes
 // Public routes

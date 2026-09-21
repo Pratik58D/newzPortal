@@ -35,7 +35,11 @@ export interface INewsArticle extends Document {
   status: NewsStatus;
   rejectionReason?: string;
   views: number;
-  
+  tags: string[];
+  isFeatured: boolean;
+  isBreaking: boolean;
+  breakingUntil?: Date;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -106,7 +110,32 @@ const newsArticleSchema = new Schema<INewsArticle>({
     type: Number,
     default: 0,
   },
+  tags: {
+    type: [String],
+    default: [],
+    // Normalize on write so lookups/filters (GET /api/news?tag=) can do an
+    // exact, case-insensitive match without a regex on every query.
+    set: (tags: string[]) =>
+      Array.isArray(tags)
+        ? [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))]
+        : [],
+  },
+  isFeatured: {
+    type: Boolean,
+    default: false,
+  },
+  isBreaking: {
+    type: Boolean,
+    default: false,
+  },
+  // Optional expiry so a breaking flag can't linger forever; absent = no expiry.
+  breakingUntil: {
+    type: Date,
+  },
 }, { timestamps: true });
+
+newsArticleSchema.index({ tags: 1 });
+newsArticleSchema.index({ isBreaking: 1, publishedAt: -1 });
 
 // Text index for search
 newsArticleSchema.index({
