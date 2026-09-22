@@ -94,6 +94,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above plus `npm run build` on ev
 | `SiteSettings` | Singleton (`key: "site"`): `siteName`/`tagline`/`about` `{np,en}`, `logo?`, `contact`, `social`, `seo`, `footerLinks`, `copyright`, `footerNote` — see `/api/settings` |
 | `HomepageSection` | One document per homepage section: unique `key`, `type` (`hero`\|`latest`\|`category`\|`province`\|`banner-ad`), `enabled`, `order`, `title.{np,en}`, `config` — see `/api/homepage` |
 | `Page` | `slug` (unique), `title.{np,en}`, `body.{np,en}` (Markdown), `isPublished`, `showInFooter` — see `/api/pages` |
+| `MarketRate` | One document per `kind` (`gold-silver`\|`petrol`), `values` (shape varies by kind), `updatedBy` — staff-entered fallback, no seed data — see `/api/market-rates` |
 | `AuditLog` | Written by site-settings changes only (`settings.update`, `settings.logo.*`); not yet wired into any other controller |
 
 Provinces are **not** a Mongo collection — `/api/provinces` returns a static list from `src/constants/provinces.ts`.
@@ -199,6 +200,15 @@ Ad images (`image`, `mobileImage`) may be up to **8 MB** (animated GIF banners a
 | DELETE | `/:id` | admin | Delete |
 
 The seeded fallback applies only while **no** page has ever been stored; once any page is saved the collection is the only source, so a deleted page stays deleted.
+
+### Market rates (`/api/market-rates`)
+No official free API exists for gold/silver or petrol price in Nepal, so these are staff-entered rather than fetched live from the backend — though the frontend layers a live source on top of each where one exists server-side (FENEGOSIDA for gold/silver, NOC for petrol/diesel; see `newsportal_frontend/lib/fenegosida.ts` and `lib/nocFuelPrices.ts`), falling back to this staff-entered value on failure. (Unlike forex, which the frontend reads directly from Nepal Rastra Bank's public API with no staff-entered fallback needed.) A staff-entered NEPSE kind existed here previously; it was removed since no reliable NEPSE source, official or otherwise, was ever found — see `docs/market-data-sources-plan.md`.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/` | — | `{ success, data }`: both kinds at once, `{ values, updatedAt }` per kind. `values: null` for any kind nobody has entered yet — there is no seed data for real financial figures |
+| PUT | `/gold-silver` | admin | Body `{ values: { goldPerTola, goldPerGram, silverPerTola, silverPerGram } }` (NPR, non-negative). Upserts |
+| PUT | `/petrol` | admin | Body `{ values: { petrolPerLiter, dieselPerLiter, keroseneperLiter } }` (NPR, non-negative). Upserts |
 
 Response envelopes are **not fully standardized** across all of the above yet — most return `{ success, message?, data }`, but some category/advertisement endpoints still use resource-specific keys (`categories`, `parent`/`subcategories`). Check the actual controller before writing a frontend consumer; see `docs/news-portal-findings.md`, B4, for the full list of what's been standardized vs. what's still pending.
 

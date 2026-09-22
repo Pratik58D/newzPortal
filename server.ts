@@ -23,6 +23,7 @@ import subscriberRouter from "./src/routes/subscriber.routes.js";
 import siteSettingsRouter from "./src/routes/siteSettings.routes.js";
 import homepageRouter from "./src/routes/homepage.routes.js";
 import pageRouter from "./src/routes/page.routes.js";
+import marketRateRouter from "./src/routes/marketRate.routes.js";
 import { apiLimiter } from "./src/middleware/rateLimit.middleware.js";
 import { sanitizeInput } from "./src/middleware/sanitize.middleware.js";
 
@@ -86,6 +87,7 @@ app.use("/api/subscribers", subscriberRouter);
 app.use("/api/settings", siteSettingsRouter);
 app.use("/api/homepage", homepageRouter);
 app.use("/api/pages", pageRouter);
+app.use("/api/market-rates", marketRateRouter);
 
 app.use(errorHandling);
 

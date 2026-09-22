@@ -18,6 +18,7 @@ export const REVALIDATE_TAGS = {
   homepage: "homepage",
   pages: "pages",
   ads: "ads",
+  marketRates: "market-rates",
 } as const;
 
 const TIMEOUT_MS = 3000;
