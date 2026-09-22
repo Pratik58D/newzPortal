@@ -17,6 +17,7 @@ export const REVALIDATE_TAGS = {
   settings: "settings",
   homepage: "homepage",
   pages: "pages",
+  ads: "ads",
 } as const;
 
 const TIMEOUT_MS = 3000;

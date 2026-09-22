@@ -1,12 +1,9 @@
 import { z } from "zod";
 
-export const AD_PLACEMENTS = [
-  "top_banner",
-  "home_banner",
-  "sidebar",
-  "news_detail_top",
-  "news_detail_bottom",
-] as const;
+import { AD_SLOT_KEYS } from "../constants/adSlots.js";
+
+// Same slots the advertisements use (constants/adSlots.ts).
+export const AD_PLACEMENTS = AD_SLOT_KEYS;
 
 // Sections that make no sense twice on one page.
 const SINGLETON_TYPES = ["hero", "latest", "province"] as const;
@@ -85,6 +82,22 @@ export const updateHomepageSchema = z
         }
         seenKeys.add(section.key);
       }
+    });
+
+    // Two banner sections on the same slot would show the same ad twice.
+    const seenPlacements = new Set<string>();
+
+    sections.forEach((section, index) => {
+      if (section.type !== "banner-ad") return;
+
+      if (seenPlacements.has(section.config.placement)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["sections", index, "config", "placement"],
+          message: `Only one banner ad section is allowed per slot ("${section.config.placement}")`,
+        });
+      }
+      seenPlacements.add(section.config.placement);
     });
 
     for (const type of SINGLETON_TYPES) {

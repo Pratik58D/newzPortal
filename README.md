@@ -50,6 +50,7 @@ The frontend caches API data (tagged fetches, 60s fallback). After a successful 
 | Site settings update, logo upload/remove | `settings` |
 | Homepage layout save | `homepage` |
 | Page create / update / delete | `pages` |
+| Advertisement create / update / delete | `ads` |
 
 The request has a 3s timeout and never affects the original request: failures are logged with `pino` (endpoint, tags, reason - never the secret) and the mutation still succeeds. With `FRONTEND_REVALIDATE_URL` unset nothing is sent. Not covered: comment moderation, advertisements and reporter/user changes (those pages still refresh within 60s or are not cached).
 
@@ -156,13 +157,17 @@ All routes are mounted under `/api` in `server.ts`. `authMiddleware` requires a 
 ### Advertisements (`/api/advertisements`)
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET | `/active` | — | |
-| GET | `/` | logged-in | |
-| GET | `/:id` | logged-in | |
-| POST | `/` | logged-in | `multipart/form-data`, 1 image |
-| PATCH | `/:id` | logged-in | |
-| DELETE | `/:id` | superadmin | |
+| GET | `/slots` | — | **What the site renders.** `{ success, data: { <slotKey>: [ad, …] } }` for every slot in `src/constants/adSlots.ts`. Only live ads (active, inside their dates); each slot gets at most its `maxAds` (**2 in `top_banner`, 3 in `sidebar`, 1 elsewhere**; ads are returned in stacking order), chosen by `priority` (higher always wins) then weighted-random by `weight`. Public fields only (`id`, `title`, `alt`, `image.url`, `mobileImage.url?`, `redirectUrl`, `sponsorLabel`); ads with an unsafe `redirectUrl` are dropped |
+| GET | `/active` | — | Older, one slot at a time (`?placement=`); returns full documents. Kept for compatibility |
+| GET | `/` | admin | Filters: `search`, `placement` (matches `placements` or the legacy `placement`), `isActive` |
+| GET | `/:id` | admin | |
+| POST | `/` | admin | `multipart/form-data`: `image` (required), `mobileImage` (optional), `title`, `redirectUrl`, `placements` (JSON array string, e.g. `["sidebar","footer_top"]`; the legacy single `placement` still works), `startDate`, `endDate`, `isActive`, `priority` (0-100, default 50), `weight` (1-10, default 1), `altText`, `sponsorLabel` (optional; **empty by default = no label under the ad**) |
+| PATCH | `/:id` | admin | Same fields, all optional; `removeMobileImage=true` clears the mobile image. Images are replaced (and the old ones deleted) only after the update is saved |
+| DELETE | `/:id` | superadmin | Deletes both images |
 
+Ad images (`image`, `mobileImage`) may be up to **8 MB** (animated GIF banners are kept as-is by Cloudinary); every other upload keeps the 5 MB limit. `admin` = admin or superadmin. `redirectUrl` must be an absolute `http://`/`https://` URL of at most 2048 characters with no username/password (`src/validation/redirectUrl.ts`). Slots live in one registry, `src/constants/adSlots.ts` (`top_banner`, `home_banner`, `sidebar`, `news_detail_top`, `news_detail_bottom`, `home_mid`, `home_bottom`, `footer_top`, `sidebar_secondary`); the model enums, both validation schemas, the homepage `banner-ad` section and `/slots` all derive from it, and the frontend mirrors it in `lib/adSlots.ts`. `placement` is always kept equal to `placements[0]` so older data and readers keep working. Create/update/delete send the `ads` revalidation tag (see *Frontend cache revalidation*).
+
+**One-off migration (optional):** ads saved before `placements` existed only have `placement`; `/slots` and the admin list already fall back to it. `npm run migrate:ads -- --dry-run` (then without `--dry-run`) copies it into `placements`. Idempotent, touches nothing else. Like the seed, it uses `MONGODB_URI_PROD` (the shared Atlas database) - dry-run first.
 ### Provinces (`/api/provinces`)
 | Method | Path | Auth | Notes |
 |---|---|---|---|

@@ -23,6 +23,18 @@ const upload = multer({
 
 export default upload;
 
+// Advertisement images (desktop + mobile). Animated GIF banners are often
+// larger than ordinary images, so ads get a higher limit than the default.
+export const AD_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
+
+export const adUpload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: AD_UPLOAD_MAX_BYTES,
+  },
+});
+
 // News create/update accepts an "images" field (image files only) and a
 // "video" field (video files only, for self-hosted video mode) side by
 // side — needs its own fileFilter/limit since video files are larger and

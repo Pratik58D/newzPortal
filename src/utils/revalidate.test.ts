@@ -94,6 +94,7 @@ describe("tag helpers", () => {
       REVALIDATE_TAGS.settings,
       REVALIDATE_TAGS.homepage,
       REVALIDATE_TAGS.pages,
-    ]).toEqual(["news", "settings", "homepage", "pages"]);
+      REVALIDATE_TAGS.ads,
+    ]).toEqual(["news", "settings", "homepage", "pages", "ads"]);
   });
 });

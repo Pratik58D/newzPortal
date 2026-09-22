@@ -7,7 +7,33 @@ import {
     deleteAdvertisementImages,
 } from "../services/media.service.js";
 import { paginate } from "../utils/paginate.js";
+import { buildSlotMap, buildSlotPools, type AdLike } from "../utils/adSelection.js";
+import { revalidateFrontend, REVALIDATE_TAGS } from "../utils/revalidate.js";
 
+// Fields Multer puts in req.files (see the route's upload.fields()).
+type AdFiles = {
+    image?: Express.Multer.File[];
+    mobileImage?: Express.Multer.File[];
+};
+
+const adFiles = (req: Request): AdFiles =>
+    (req.files as AdFiles | undefined) ?? {};
+
+// Ads that are switched on and inside their date window right now.
+const liveNow = () => {
+    const now = new Date();
+    return {
+        isActive: true,
+        startDate: { $lte: now },
+        endDate: { $gte: now },
+    };
+};
+
+// Matches an ad by slot: the `placements` list, or the legacy single
+// `placement` on ads saved before `placements` existed.
+const inSlot = (slot: string) => ({
+    $or: [{ placements: slot }, { placement: slot }],
+});
 
 export const createAdvertisement = asyncHandler(
     async (req: Request, res: Response) => {
@@ -16,18 +42,24 @@ export const createAdvertisement = asyncHandler(
             title,
             redirectUrl,
             placement,
+            placements,
             startDate,
             endDate,
             isActive,
+            priority,
+            weight,
+            altText,
+            sponsorLabel,
+            devices,
         } = req.body;
 
-        const files = req.files as Express.Multer.File[] | undefined;
+        const { image: imageFiles, mobileImage: mobileFiles } = adFiles(req);
 
-        if (!title || !redirectUrl || !placement || !startDate || !endDate) {
+        if (!title || !redirectUrl || !placement || !placements?.length || !startDate || !endDate) {
             throw new ApiError(400, "Required advertisement fields are missing");
         }
 
-        if (!files?.length) {
+        if (!imageFiles?.length) {
             throw new ApiError(400, "Advertisement image is required");
         }
 
@@ -46,7 +78,7 @@ export const createAdvertisement = asyncHandler(
         }
 
 
-        const images = await uploadAdvertisementImages(files);
+        const images = await uploadAdvertisementImages(imageFiles);
 
         if (!images.length) {
             throw new ApiError(
@@ -55,18 +87,38 @@ export const createAdvertisement = asyncHandler(
             );
         }
 
+        let mobileImage: (typeof images)[number] | undefined;
+
+        if (mobileFiles?.length) {
+            try {
+                [mobileImage] = await uploadAdvertisementImages(mobileFiles);
+            } catch (error) {
+                // Don't leave the already-uploaded desktop image orphaned.
+                await deleteAdvertisementImages([images[0]]).catch(() => undefined);
+                throw error;
+            }
+        }
+
         const advertisement = await advertisementModel.create({
             title,
             redirectUrl,
             placement,
+            placements,
             startDate: start,
             endDate: end,
             isActive: isActive !== undefined
                 ? isActive === "true" || isActive === true
                 : true,
             image: images[0],
+            ...(mobileImage ? { mobileImage } : {}),
+            ...(priority !== undefined ? { priority } : {}),
+            ...(weight !== undefined ? { weight } : {}),
+            ...(altText !== undefined ? { altText } : {}),
+            ...(sponsorLabel !== undefined ? { sponsorLabel } : {}),
+            ...(devices !== undefined ? { devices } : {}),
         });
 
+        revalidateFrontend([REVALIDATE_TAGS.ads]);
 
         res.status(201).json({
             success: true,
@@ -88,28 +140,32 @@ export const getAdvertisements = asyncHandler(
       isActive,
     } = req.query;
 
-    const query: Record<string, unknown> = {};
+    const and: Record<string, unknown>[] = [];
 
     if (search && typeof search === "string") {
-      query.$or = [
-        {
-          title: {
-            $regex: search,
-            $options: "i",
+      and.push({
+        $or: [
+          {
+            title: {
+              $regex: search,
+              $options: "i",
+            },
           },
-        },
-        {
-          redirectUrl: {
-            $regex: search,
-            $options: "i",
+          {
+            redirectUrl: {
+              $regex: search,
+              $options: "i",
+            },
           },
-        },
-      ];
+        ],
+      });
     }
 
     if (placement && typeof placement === "string") {
-      query.placement = placement;
+      and.push(inSlot(placement));
     }
+
+    const query: Record<string, unknown> = and.length ? { $and: and } : {};
 
     if (isActive !== undefined) {
       query.isActive = String(isActive) === "true";
@@ -171,12 +227,19 @@ export const updateAdvertisement = asyncHandler(
       title,
       redirectUrl,
       placement,
+      placements,
       startDate,
       endDate,
       isActive,
+      priority,
+      weight,
+      altText,
+      sponsorLabel,
+      devices,
+      removeMobileImage,
     } = req.body;
 
-    const files = req.files as Express.Multer.File[] | undefined;
+    const { image: imageFiles, mobileImage: mobileFiles } = adFiles(req);
 
     if (title !== undefined) {
       advertisement.title = title;
@@ -186,8 +249,12 @@ export const updateAdvertisement = asyncHandler(
       advertisement.redirectUrl = redirectUrl;
     }
 
-    if (placement !== undefined) {
+    if (placements !== undefined) {
+      advertisement.placements = placements;
+      advertisement.placement = placements[0];
+    } else if (placement !== undefined) {
       advertisement.placement = placement;
+      advertisement.placements = [placement];
     }
 
     if (startDate !== undefined) {
@@ -203,24 +270,11 @@ export const updateAdvertisement = asyncHandler(
         isActive === true || isActive === "true";
     }
 
-    // Replace image if a new one was uploaded
-    if (files?.length) {
-      const oldImage = advertisement.image;
-
-      const newImages =
-        await uploadAdvertisementImages(files);
-
-      if (!newImages.length) {
-        throw new ApiError(
-          500,
-          "Advertisement image upload failed"
-        );
-      }
-
-      advertisement.image = newImages[0];
-
-      await deleteAdvertisementImages([oldImage]);
-    }
+    if (priority !== undefined) advertisement.priority = priority;
+    if (weight !== undefined) advertisement.weight = weight;
+    if (altText !== undefined) advertisement.altText = altText;
+    if (sponsorLabel !== undefined) advertisement.sponsorLabel = sponsorLabel;
+    if (devices !== undefined) advertisement.devices = devices;
 
     if (advertisement.endDate <= advertisement.startDate) {
       throw new ApiError(
@@ -229,7 +283,64 @@ export const updateAdvertisement = asyncHandler(
       );
     }
 
+    // Images are replaced only after the request has passed every check, so a
+    // rejected update never swaps (or deletes) a file.
+    const oldImages: { url: string; key: string }[] = [];
+
+    // Replace image if a new one was uploaded
+    if (imageFiles?.length) {
+      const newImages =
+        await uploadAdvertisementImages(imageFiles);
+
+      if (!newImages.length) {
+        throw new ApiError(
+          500,
+          "Advertisement image upload failed"
+        );
+      }
+
+      // Snapshot the values: `advertisement.image` is a live view of the
+      // document, so pushing it as-is would read the NEW image after the
+      // assignment below and delete the file we just uploaded.
+      oldImages.push({
+        url: advertisement.image.url,
+        key: advertisement.image.key,
+      });
+      advertisement.image = newImages[0];
+    }
+
+    if (mobileFiles?.length) {
+      const [newMobile] = await uploadAdvertisementImages(mobileFiles);
+
+      if (!newMobile) {
+        throw new ApiError(
+          500,
+          "Advertisement image upload failed"
+        );
+      }
+
+      if (advertisement.mobileImage) {
+        oldImages.push({
+          url: advertisement.mobileImage.url,
+          key: advertisement.mobileImage.key,
+        });
+      }
+      advertisement.mobileImage = newMobile;
+    } else if (removeMobileImage === "true" && advertisement.mobileImage) {
+      oldImages.push({
+        url: advertisement.mobileImage.url,
+        key: advertisement.mobileImage.key,
+      });
+      advertisement.set("mobileImage", undefined);
+    }
+
     await advertisement.save();
+
+    if (oldImages.length) {
+      await deleteAdvertisementImages(oldImages).catch(() => undefined);
+    }
+
+    revalidateFrontend([REVALIDATE_TAGS.ads]);
 
     res.json({
       success: true,
@@ -254,9 +365,12 @@ export const deleteAdvertisement = asyncHandler(
 
     await deleteAdvertisementImages([
       advertisement.image,
+      ...(advertisement.mobileImage ? [advertisement.mobileImage] : []),
     ]);
 
     await advertisement.deleteOne();
+
+    revalidateFrontend([REVALIDATE_TAGS.ads]);
 
     res.json({
       success: true,
@@ -266,25 +380,15 @@ export const deleteAdvertisement = asyncHandler(
 );
 
 
-// Public API
+// Public API (older, one slot at a time; the site now uses /slots)
 export const getActiveAdvertisements = asyncHandler(
   async (req, res) => {
     const { placement } = req.query;
 
-    const now = new Date();
-
-    const query: Record<string, unknown> = {
-      isActive: true,
-      startDate: {
-        $lte: now,
-      },
-      endDate: {
-        $gte: now,
-      },
-    };
+    const query: Record<string, unknown> = { ...liveNow() };
 
     if (placement && typeof placement === "string") {
-      query.placement = placement;
+      Object.assign(query, inSlot(placement));
     }
 
     const advertisements =
@@ -296,6 +400,30 @@ export const getActiveAdvertisements = asyncHandler(
     res.json({
       success: true,
       data: advertisements,
+    });
+  }
+);
+
+// Public API: everything the site needs to render its ads in one request.
+// `{ data: { slots: { <slotKey>: [ad,...] }, pools: { <slotKey>: [ad,...] } } }`
+// for every registered slot. `slots` is the server-rendered pick (no JS
+// needed): at most `maxAds` per slot, chosen by priority then weighted
+// random (see utils/adSelection.ts). `pools` is every live, eligible ad tied
+// for that slot's top priority, for the client AdRotator to re-draw from
+// after mount (per-visitor rotation) - never anything `slots` wouldn't also
+// have been allowed to pick. Public fields only.
+export const getAdvertisementSlots = asyncHandler(
+  async (_req, res) => {
+    const liveAds = (await advertisementModel
+      .find(liveNow())
+      .lean()) as unknown as AdLike[];
+
+    res.json({
+      success: true,
+      data: {
+        slots: buildSlotMap(liveAds),
+        pools: buildSlotPools(liveAds),
+      },
     });
   }
 );
