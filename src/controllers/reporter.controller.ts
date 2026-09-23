@@ -1,15 +1,23 @@
 import Reporter from "../models/reporter.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { paginate } from "../utils/paginate.js";
 
 // List reporters
 export const getAllReporters = asyncHandler(async (req, res) => {
-  const reporters = await Reporter.find()
-    .sort({ name: 1 })
-    .select("name email phone isActive createdAt");
+  const {
+    page = 1,
+    limit = 10,
+  } = req.query;
+
+  const result = await paginate(Reporter, {}, {
+    page: page as string,
+    limit: limit as string,
+    sort: { name: 1 },
+  });
 
   res.status(200).json({
     success: true,
-    data: reporters,
+    ...result,
   });
 });
 

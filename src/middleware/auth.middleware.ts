@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import type { NextFunction, Request, Response } from "express";
 import userModel from "../models/user.model.js";
+import { logger } from "../config/logger.js";
 
 interface DecodedToken {
   id: string;
@@ -16,7 +17,13 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
       .json({ success: false, message: "Unauthorized user !" });
   }
   try {
-    const decodeToken = jwt.verify(token, process.env.JWT_SECRET!) as DecodedToken;
+    // JWT_SECRET presence is guaranteed by validateEnv() at boot (src/config/env.ts),
+    // so this is a defensive check, not the primary guarantee.
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET is not configured");
+    }
+
+    const decodeToken = jwt.verify(token, process.env.JWT_SECRET) as DecodedToken;
     if (!decodeToken) {
       return res
         .status(401)
@@ -40,7 +47,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     };
     next();
   } catch (error) {
-    console.log("error in auth middleware", (error as Error).message);
+    logger.debug({ err: error }, "auth middleware rejected request");
     return res
       .status(401)
       .json({ success: false, message: "unauthorised user!" });

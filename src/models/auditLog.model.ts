@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 
-export type AuditTargetType = "User" | "NewsArticle";
+export type AuditTargetType = "User" | "NewsArticle" | "SiteSettings";
 
 export interface IAuditLog extends Document {
   _id: Types.ObjectId;
@@ -27,7 +27,7 @@ const auditLogSchema = new Schema<IAuditLog>(
     targetType: {
       type: String,
       required: true,
-      enum: ["User", "NewsArticle"],
+      enum: ["User", "NewsArticle", "SiteSettings"],
     },
     targetId: {
       type: Schema.Types.ObjectId,

@@ -1,4 +1,5 @@
 import newsModel from "../models/news.model.js";
+import { revalidateFrontend, REVALIDATE_TAGS } from "../utils/revalidate.js";
 import type { ProvinceCode } from "../constants/provinces.js";
 import {
   uploadToCloudinary,
@@ -9,8 +10,18 @@ import Category from "../models/category.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { generateSlug } from "../utils/generateSlug.js";
+import {
+  breakingNotExpired,
+  parseBreakingUntil,
+  resolveNewsSort,
+} from "../utils/newsQuery.js";
 import Reporter from "../models/reporter.model.js";
-import { uploadNewsImages, deleteNewsImages, updateNewsImages } from "../services/media.service.js";
+import { uploadNewsImages, deleteNewsImages, updateNewsImages, uploadNewsVideo, deleteNewsVideo } from "../services/media.service.js";
+
+type NewsMediaFiles = {
+  images?: Express.Multer.File[];
+  video?: Express.Multer.File[];
+};
 import { success } from "zod";
 
 // Staff (editor/admin/superadmin): CREATE
@@ -25,10 +36,48 @@ export const createNews = asyncHandler(async (req, res) => {
     subCategory,
     province,
     reporter,
-    authorType = 'reporter'
+    authorType = 'reporter',
+    tags,
+    isFeatured,
+    isBreaking,
+    breakingUntil,
+    mediaType = "image",
+    videoUrl,
+    videoProvider,
   } = req.body;
 
-  const files = (req.files ?? []) as Express.Multer.File[];
+  const parsedBreakingUntil = parseBreakingUntil(breakingUntil);
+  if (breakingUntil !== undefined && parsedBreakingUntil === undefined) {
+    return res.status(400).json({
+      success: false,
+      message: "breakingUntil must be a valid date",
+    });
+  }
+
+  const uploadedFiles = (req.files ?? {}) as NewsMediaFiles;
+  const imageFiles = uploadedFiles.images ?? [];
+  const videoFile = uploadedFiles.video?.[0];
+
+  if (!["image", "video"].includes(mediaType)) {
+    return res.status(400).json({
+      success: false,
+      message: "mediaType must be either image or video",
+    });
+  }
+
+  if (mediaType === "video" && !videoFile && !videoUrl) {
+    return res.status(400).json({
+      success: false,
+      message: "Provide a video file or a video URL when mediaType is video",
+    });
+  }
+
+  if (mediaType === "video" && !videoFile && !["youtube", "vimeo"].includes(videoProvider)) {
+    return res.status(400).json({
+      success: false,
+      message: "videoProvider must be youtube or vimeo when providing a video link",
+    });
+  }
 
   if (!titleNp || !category) {
     return res
@@ -106,8 +155,14 @@ export const createNews = asyncHandler(async (req, res) => {
 
   if (exists) slug += "-" + Date.now();
 
-  // Upload images
-  const images = await uploadNewsImages(files)
+  // Build media block: either an uploaded/kept image set, or a video
+  // (self-hosted upload, tagged "s3", or a youtube/vimeo link).
+  const media =
+    mediaType === "video"
+      ? videoFile
+        ? { type: "video" as const, video: { ...(await uploadNewsVideo(videoFile)), provider: "s3" as const } }
+        : { type: "video" as const, video: { url: videoUrl, provider: videoProvider as "youtube" | "vimeo" } }
+      : { type: "image" as const, images: await uploadNewsImages(imageFiles) };
 
   const news = new newsModel({
     slug,
@@ -123,10 +178,7 @@ export const createNews = asyncHandler(async (req, res) => {
 
     province: (province as ProvinceCode) || undefined,
 
-    media: {
-      type: "image",
-      images
-    },
+    media,
 
     content: {
       np: {
@@ -142,9 +194,25 @@ export const createNews = asyncHandler(async (req, res) => {
       },
     },
     status: "draft",
+    tags: tags ? JSON.parse(tags) : [],
+    // Only admin/superadmin may mark an article featured — matches the
+    // existing pattern of staff-tier gating on editorial decisions.
+    isFeatured: ["admin", "superadmin"].includes(req.user!.role)
+      ? isFeatured === "true" || isFeatured === true
+      : false,
+    // Breaking is likewise an editorial-tier decision.
+    isBreaking: ["admin", "superadmin"].includes(req.user!.role)
+      ? isBreaking === "true" || isBreaking === true
+      : false,
+    breakingUntil:
+      ["admin", "superadmin"].includes(req.user!.role) && parsedBreakingUntil
+        ? parsedBreakingUntil
+        : undefined,
   });
 
   await news.save();
+
+  revalidateFrontend([REVALIDATE_TAGS.news, REVALIDATE_TAGS.newsItem(news.slug)]);
 
   res.status(201).json({
     success: true,
@@ -182,10 +250,39 @@ export const updateNews = asyncHandler(async (req, res) => {
     titleNp, summaryNp, bodyNp,
     titleEn, summaryEn, bodyEn,
     category, subCategory, province,
-    reporter, authorType
+    reporter, authorType,
+    tags, isFeatured, isBreaking, breakingUntil,
+    mediaType, videoUrl, videoProvider,
   } = req.body;
 
   const updateFields: Record<string, unknown> = {};
+
+  // Only admin/superadmin may change the breaking flag / its expiry.
+  if (["admin", "superadmin"].includes(req.user!.role)) {
+    if (isBreaking !== undefined) {
+      updateFields.isBreaking = isBreaking === "true" || isBreaking === true;
+    }
+
+    if (breakingUntil !== undefined) {
+      const parsed = parseBreakingUntil(breakingUntil);
+      if (parsed === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "breakingUntil must be a valid date",
+        });
+      }
+      updateFields.breakingUntil = parsed;
+    }
+  }
+
+  if (tags !== undefined) {
+    updateFields.tags = JSON.parse(tags);
+  }
+
+  // Only admin/superadmin may change the featured flag.
+  if (isFeatured !== undefined && ["admin", "superadmin"].includes(req.user!.role)) {
+    updateFields.isFeatured = isFeatured === "true" || isFeatured === true;
+  }
 
   //province
   if (province !== undefined) {
@@ -356,8 +453,10 @@ export const updateNews = asyncHandler(async (req, res) => {
     }
   }
 
-  //images
-  const files = (req.files ?? []) as Express.Multer.File[];
+  //media (images or video)
+  const uploadedFiles = (req.files ?? {}) as NewsMediaFiles;
+  const imageFiles = uploadedFiles.images ?? [];
+  const videoFile = uploadedFiles.video?.[0];
 
   const existingImages = existingNews.media?.images ?? [];
 
@@ -365,10 +464,49 @@ export const updateNews = asyncHandler(async (req, res) => {
     ? JSON.parse(req.body.keptImageKeys)
     : existingImages.map((image) => image.key);
 
-  const imagesChanged = files.length > 0 || req.body.keptImageKeys !== undefined;
+  const imagesChanged = imageFiles.length > 0 || req.body.keptImageKeys !== undefined;
 
-  if (imagesChanged) {
-    const images = await updateNewsImages(existingImages, keptKeys, files);
+  const requestedMediaType =
+    mediaType === "image" || mediaType === "video" ? mediaType : undefined;
+
+  const existingVideo = existingNews.media?.video;
+  const existingUploadedVideoKey =
+    existingNews.media?.type === "video" && existingVideo?.provider === "s3"
+      ? existingVideo.key
+      : undefined;
+
+  if (requestedMediaType === "video") {
+    if (!videoFile && !videoUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide a video file or a video URL when switching to video",
+      });
+    }
+
+    if (!videoFile && !["youtube", "vimeo"].includes(videoProvider)) {
+      return res.status(400).json({
+        success: false,
+        message: "videoProvider must be youtube or vimeo when providing a video link",
+      });
+    }
+
+    // Clean up whatever storage-backed media the article currently has.
+    if (existingNews.media?.type === "image" && existingImages.length > 0) {
+      await deleteNewsImages(existingImages);
+    }
+    if (existingUploadedVideoKey) {
+      await deleteNewsVideo(existingUploadedVideoKey);
+    }
+
+    updateFields.media = videoFile
+      ? { type: "video", video: { ...(await uploadNewsVideo(videoFile)), provider: "s3" } }
+      : { type: "video", video: { url: videoUrl, provider: videoProvider } };
+  } else if (requestedMediaType === "image" || imagesChanged) {
+    if (existingUploadedVideoKey) {
+      await deleteNewsVideo(existingUploadedVideoKey);
+    }
+
+    const images = await updateNewsImages(existingImages, keptKeys, imageFiles);
 
     updateFields.media = {
       type: "image",
@@ -386,6 +524,11 @@ export const updateNews = asyncHandler(async (req, res) => {
       runValidators: true,
     }
   );
+
+  revalidateFrontend([
+    REVALIDATE_TAGS.news,
+    REVALIDATE_TAGS.newsItem(updatedNews?.slug ?? ""),
+  ]);
 
   res.json({ success: true, message: "News updated successfully", data: updatedNews });
 });
@@ -461,6 +604,9 @@ export const updateNewsStatus = asyncHandler(async (req, res) => {
 
   news.status = status;
   await news.save();
+
+  // Approval publishes and rejection unpublishes, so both change the site.
+  revalidateFrontend([REVALIDATE_TAGS.news, REVALIDATE_TAGS.newsItem(news.slug)]);
 
   return res.status(200).json({
     success: true,
@@ -603,6 +749,21 @@ export const getNews = asyncHandler(async (req, res) => {
     query.province = String(req.query.province).toLowerCase();
   }
 
+  if (req.query.tag) {
+    query.tags = String(req.query.tag).trim().toLowerCase();
+  }
+
+  if (req.query.featured) {
+    query.isFeatured = String(req.query.featured) === "true";
+  }
+
+  // Only the affirmative filter is supported: `breaking=true` returns
+  // currently-active breaking items (flag set and not past `breakingUntil`).
+  if (String(req.query.breaking) === "true") {
+    query.isBreaking = true;
+    query.$and = [breakingNotExpired()];
+  }
+
   if (req.query.category) {
     const categoryDoc = await Category.findOne({ slug: req.query.category });
     if (categoryDoc) {
@@ -624,7 +785,7 @@ export const getNews = asyncHandler(async (req, res) => {
   const [newsList, total] = await Promise.all([
     newsModel
       .find(query)
-      .sort({ publishedAt: -1 }) // latest news first
+      .sort(resolveNewsSort(req.query.sort)) // default: featured first, then latest
       .skip(skip)
       .limit(limit)
       .populate("category", "name slug")
@@ -664,6 +825,7 @@ export const getNewsBySlug = asyncHandler(async (req, res) => {
     .populate("subCategory", "name slug")
     .populate({
       path: "comments",
+      match: { status: "approved" },
       select: "userId commentText createdAt",
       populate: { path: "userId", select: "name" },
       options: { sort: { createdAt: -1 } },
@@ -739,7 +901,7 @@ export const deleteNews = asyncHandler(async (req, res) => {
   // Check if the news exists
   const news = await newsModel.findById(newsId);
   if (!news) {
-    return res.status(404).json({ message: "News not found" });
+    return res.status(404).json({ success: false, message: "News not found" });
   }
 
   //  Delete images from Cloudinary if stored there
@@ -747,5 +909,75 @@ export const deleteNews = asyncHandler(async (req, res) => {
 
   await newsModel.findByIdAndDelete(newsId);
 
+  revalidateFrontend([REVALIDATE_TAGS.news, REVALIDATE_TAGS.newsItem(news.slug)]);
+
   res.json({ success: true, message: "News deleted successfully" });
+});
+// public: Get top N most-viewed news (approved only)
+export const getMostViewedNews = asyncHandler(async (req, res) => {
+  const limit = Math.min(parseInt(String(req.query.limit)) || 5, 20);
+
+  const newsList = await newsModel
+    .find({ status: "approved" })
+    .sort({ views: -1, publishedAt: -1 }) // tie-break on recency
+    .limit(limit)
+    .populate("category", "name slug")
+    .populate("subCategory", "name slug")
+    .select("-content.np.body -content.en.body") // list view, no need for full body
+    .lean();
+
+  return res.json({
+    success: true,
+    data: newsList,
+  });
+});
+
+// Staff: dashboard summary stats — article counts by status, total views,
+// and pending-comment count are otherwise only derivable by paging through
+// full list endpoints client-side, which doesn't scale.
+export const getNewsStats = asyncHandler(async (req, res) => {
+  const baseQuery: Record<string, unknown> = {};
+
+  // Editors only see stats for their own articles, matching getManageNews.
+  if (req.user!.role === "editor") {
+    baseQuery.editor = req.user!.id;
+  }
+
+  const [statusCounts, viewsAgg] = await Promise.all([
+    newsModel.aggregate([
+      { $match: baseQuery },
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]),
+    newsModel.aggregate([
+      { $match: baseQuery },
+      { $group: { _id: null, totalViews: { $sum: "$views" } } },
+    ]),
+  ]);
+
+  const byStatus: Record<string, number> = {
+    draft: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+  };
+
+  for (const entry of statusCounts) {
+    if (typeof entry._id === "string") {
+      byStatus[entry._id] = entry.count;
+    }
+  }
+
+  const totalArticles = Object.values(byStatus).reduce(
+    (sum, count) => sum + count,
+    0
+  );
+
+  return res.json({
+    success: true,
+    data: {
+      totalArticles,
+      totalViews: viewsAgg[0]?.totalViews ?? 0,
+      byStatus,
+    },
+  });
 });

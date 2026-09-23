@@ -1,4 +1,5 @@
 import Category from "../models/category.model.js";
+import { revalidateFrontend, REVALIDATE_TAGS } from "../utils/revalidate.js";
 import newsModel from "../models/news.model.js";
 import { paginate } from "../utils/paginate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -8,14 +9,14 @@ import { generateSlug } from "../utils/generateSlug.js";
 export const createCategory = asyncHandler(async (req, res) => {
   const { name, parent } = req.body;
   if (!name?.np) {
-    return res.status(400).json({ message: "Category name (Nepali) is required" });
+    return res.status(400).json({ success: false, message: "Category name (Nepali) is required" });
   }
   const existingNepali = await Category.findOne({
     "name.np": name.np
   });
 
   if (existingNepali) {
-    return res.status(409).json({ message: "Category with this Nepali name already exists" });
+    return res.status(409).json({ success: false, message: "Category with this Nepali name already exists" });
   }
 
   if (name.en?.trim()) {
@@ -25,6 +26,7 @@ export const createCategory = asyncHandler(async (req, res) => {
 
     if (existingEnglish) {
       return res.status(409).json({
+        success: false,
         message: "Category with this English name already exists",
       });
     }
@@ -33,10 +35,11 @@ export const createCategory = asyncHandler(async (req, res) => {
   if (parent) {
     const parentDoc = await Category.findById(parent);
     if (!parentDoc) {
-      return res.status(404).json({ message: "Parent category not found" });
+      return res.status(404).json({ success: false, message: "Parent category not found" });
     }
     if (parentDoc.parent) {
       return res.status(400).json({
+        success: false,
         message: "Subcategories cannot have their own subcategories",
       });
     }
@@ -50,6 +53,7 @@ export const createCategory = asyncHandler(async (req, res) => {
     parent: parent || null,
   });
   await newCategory.save();
+  revalidateFrontend([REVALIDATE_TAGS.categories, REVALIDATE_TAGS.category(newCategory.slug)]);
   res.status(201).json({ success: true, data: newCategory });
 });
 
@@ -60,6 +64,7 @@ export const deleteCategory = asyncHandler(async (req, res) => {
   const category = await Category.findById(id);
   if (!category) {
     return res.status(404).json({
+      success: false,
       message: "Category not found"
     });
   }
@@ -71,6 +76,7 @@ export const deleteCategory = asyncHandler(async (req, res) => {
 
   if (childCount > 0) {
     return res.status(409).json({
+      success: false,
       message: "Cannot delete a category that has subcategories. Delete or reassign them first.",
     });
   }
@@ -83,12 +89,18 @@ export const deleteCategory = asyncHandler(async (req, res) => {
 
   if (newsCount > 0) {
     return res.status(409).json({
+      success: false,
       message:
         "Cannot delete this category because news articles are using it. Reassign or remove the category from those articles first.",
     });
   }
 
   await Category.findByIdAndDelete(category._id);
+  revalidateFrontend([
+    REVALIDATE_TAGS.categories,
+    REVALIDATE_TAGS.category(category.slug),
+    REVALIDATE_TAGS.news,
+  ]);
   res.json({ success: true, message: "Category deleted" });
 });
 
@@ -101,12 +113,12 @@ export const updateCategory = asyncHandler(async (req, res) => {
   const category = await Category.findById(id);
 
   if (!category) {
-    return res.status(404).json({ message: "Category not found" });
+    return res.status(404).json({ success: false, message: "Category not found" });
   }
 
   //validate name
-  if (name?.np?.trim()) {
-    return res.status(400).json({ message: "Nepali name is required" });
+  if (!name?.np?.trim()) {
+    return res.status(400).json({ success: false, message: "Nepali name is required" });
   }
 
   const nepaliName = name.np.trim();
@@ -121,6 +133,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
   if (existingNepali) {
     return res.status(409).json({
+      success: false,
       message: "Category with this Nepali name already exists",
     });
   }
@@ -134,6 +147,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
     if (existingEnglish) {
       return res.status(409).json({
+        success: false,
         message: "Category with this English name already exists",
       });
     }
@@ -147,6 +161,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
     // Cannot make itself its own parent
     if (parent.toString() === category._id.toString()) {
       return res.status(400).json({
+        success: false,
         message: "A category cannot be its own parent",
       });
     }
@@ -154,6 +169,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
     if (!parentDoc) {
       return res.status(404).json({
+        success: false,
         message: "Parent category not found",
       });
     }
@@ -161,6 +177,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
     // Parent itself must be a top-level category
     if (parentDoc.parent) {
       return res.status(400).json({
+        success: false,
         message: "A subcategory cannot have another subcategory as its parent",
       });
     }
@@ -182,10 +199,21 @@ export const updateCategory = asyncHandler(async (req, res) => {
     en: englishName,
   };
 
+  const previousSlug = category.slug;
+
   category.slug = slug;
   category.parent = newParent;
 
   await category.save();
+
+  // A rename changes the slug and the category name shown on articles, so
+  // both the old and new category pages and the news lists are stale.
+  revalidateFrontend([
+    REVALIDATE_TAGS.categories,
+    REVALIDATE_TAGS.category(previousSlug),
+    REVALIDATE_TAGS.category(category.slug),
+    REVALIDATE_TAGS.news,
+  ]);
 
   res.json({
     success: true,
@@ -195,15 +223,23 @@ export const updateCategory = asyncHandler(async (req, res) => {
 
 })
 
-// Get all categories (defaults to top-level only; ?parent=<id> for children, ?parent=all for everything)
+// Get categories
+// Default: paginated top-level categories
+// ?parent=<id>: get subcategories of a specific category
+// ?parent=all: get all categories with subcategories
 export const getAllCategories = asyncHandler(async (req, res) => {
+  const {
+    parent,
+    page = 1,
+    limit = 10,
+  } = req.query;
 
-  const { parent } = req.query;
-
-  // If parent is provided, keep the existing filtered behavior
+  // --------------------------------------------------
+  // 1. Get subcategories for a specific parent
+  // --------------------------------------------------
   if (parent && parent !== "all") {
     const subcategories = await Category.find({
-      parent: parent,
+      parent,
     }).sort({ "name.np": 1 });
 
     return res.json({
@@ -212,45 +248,73 @@ export const getAllCategories = asyncHandler(async (req, res) => {
     });
   }
 
-  // Get only top-level categories
-  const categories = await Category.find({
-    parent: null,
-  })
-    .sort({ createdAt: -1 })
-    .lean();
+  // --------------------------------------------------
+  // 2. Get ALL categories with subcategories
+  //    ?parent=all
+  // --------------------------------------------------
+  if (parent === "all") {
+    const categories = await Category.find({
+      parent: null,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
-  // Get all subcategories belonging to those categories
-  const categoryIds = categories.map((category) => category._id);
+    const categoryIds = categories.map(
+      (category) => category._id
+    );
 
-  const subcategories = await Category.find({
-    parent: { $in: categoryIds },
-  })
-    .sort({ "name.np": 1 })
-    .lean();
+    const subcategories = await Category.find({
+      parent: { $in: categoryIds },
+    })
+      .sort({ "name.np": 1 })
+      .lean();
 
-  // Nest subcategories inside their parent category
-  const categoriesWithSubcategories = categories.map((category) => ({
-    ...category,
-    subcategories: subcategories
-      .filter(
-        (subcategory) =>
-          subcategory.parent?.toString() === category._id.toString()
-      )
-      .map(({ parent, ...subcategory }) => subcategory),
-  }));
+    const categoriesWithSubcategories = categories.map(
+      (category) => ({
+        ...category,
+        subcategories: subcategories
+          .filter(
+            (subcategory) =>
+              subcategory.parent?.toString() ===
+              category._id.toString()
+          )
+          .map(({ parent, ...subcategory }) => subcategory),
+      })
+    );
+
+    return res.json({
+      success: true,
+      categories: categoriesWithSubcategories,
+    });
+  }
+
+  // --------------------------------------------------
+  // 3. Default: paginate ONLY top-level categories
+  // --------------------------------------------------
+  const categoriesPaginated = await paginate(
+    Category,
+    { parent: null },
+    {
+      page: page as string,
+      limit: limit as string,
+      sort: { createdAt: -1 },
+    }
+  );
 
   return res.json({
     success: true,
-    categories: categoriesWithSubcategories,
+    page: categoriesPaginated.page,
+    totalPages: categoriesPaginated.totalPages,
+    totalCategories: categoriesPaginated.totalItems,
+    categories: categoriesPaginated.data,
   });
 });
-
 // Get subcategories of a category by slug
 export const getSubcategories = asyncHandler(async (req, res) => {
   const { slug } = req.params;
   const parentDoc = await Category.findOne({ slug });
   if (!parentDoc) {
-    return res.status(404).json({ message: "Category not found" });
+    return res.status(404).json({ success: false, message: "Category not found" });
   }
 
   const subcategories = await Category.find({ parent: parentDoc._id }).sort({ "name.np": 1 });
@@ -263,7 +327,7 @@ export const getCategoryBySlug = asyncHandler(async (req, res) => {
   const category = await Category.findOne({ slug });
 
   if (!category) {
-    return res.status(404).json({ message: "Category not found" });
+    return res.status(404).json({ success: false, message: "Category not found" });
   }
 
   res.json({ success: true, category });

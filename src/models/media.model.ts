@@ -16,6 +16,10 @@ export interface IMedia {
 
     video?: {
         url?: string;
+        // Storage key for a self-hosted (provider: "s3") upload, so it can
+        // be deleted later the same way images are. Unset for link-based
+        // (youtube/vimeo) videos, which aren't stored by us.
+        key?: string;
         provider?: VideoProvider;
         duration?: number;
         thumbnail?: string;
@@ -49,6 +53,7 @@ const mediaSchema = new Schema<IMedia>(
         },
         video: {
             url: String,
+            key: String,
             provider: {
                 type: String,
                 enum: ["s3", "youtube", "vimeo", "other"]

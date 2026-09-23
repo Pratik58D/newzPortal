@@ -1,12 +1,14 @@
 import { ApiError } from "../utils/ApiError.js";
 import { deleteFromCloudinary, uploadToCloudinary } from "../utils/imageHandling.js";
 import { getStorageProvider } from "../utils/provider/storageProvider.factory.js";
+import cloudinary from "../config/cloudinary.js";
 
 export const MEDIA_FOLDERS = {
     NEWS: "news-images",
     REPORTER: "reporter-images",
     CATEGORY: "category-images",
     ADVERTISEMENT: "advertisement-images",
+    SITE: "site-images",
 } as const;
 
 export interface MediaImage {
@@ -114,8 +116,41 @@ export const updateMediaImages = async (
  
 export const uploadNewsImages = (files: Express.Multer.File[]) =>
     uploadMediaImages(files, MEDIA_FOLDERS.NEWS);
- 
+
 export const deleteNewsImages = deleteMediaImages;
+
+// Self-hosted ("s3"-tagged, actually Cloudinary today — see media.model.ts)
+// video upload/delete. Not routed through StorageProvider since that
+// interface is image-shaped (no resource_type); kept isolated here so
+// swapping storage providers for images doesn't have to account for video.
+export const uploadNewsVideo = async (
+    file: Express.Multer.File
+): Promise<MediaImage> => {
+    try {
+        return await new Promise<MediaImage>((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+                { folder: MEDIA_FOLDERS.NEWS, resource_type: "video" },
+                (error, result) => {
+                    if (error) return reject(error);
+                    if (!result) return reject(new Error("Cloudinary video upload failed"));
+
+                    resolve({ url: result.secure_url, key: result.public_id });
+                }
+            );
+            stream.end(file.buffer);
+        });
+    } catch (error) {
+        throw new ApiError(500, "Failed to upload news video", error);
+    }
+};
+
+export const deleteNewsVideo = async (key: string): Promise<void> => {
+    try {
+        await cloudinary.uploader.destroy(key, { resource_type: "video" });
+    } catch (error) {
+        throw new ApiError(500, "Failed to delete news video", error);
+    }
+};
  
 export const updateNewsImages = (
     existingImages: MediaImage[],

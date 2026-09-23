@@ -11,6 +11,8 @@ import {
 } from "../controllers/category.controller.js";
 
 import { authMiddleware, role } from "../middleware/auth.middleware.js";
+import { validate } from "../middleware/validate.middleware.js";
+import { createCategorySchema, updateCategorySchema } from "../validation/category.validation.js";
 
 const categoryRouter = express.Router();
 
@@ -21,8 +23,8 @@ categoryRouter.get("/:slug/subcategories", getSubcategories);
 categoryRouter.get("/:slug", getCategoryBySlug);
 
 // 🔐 Admin-only routes
-categoryRouter.post("/", authMiddleware, role, createCategory);
-categoryRouter.put("/:id", authMiddleware, role, updateCategory);
+categoryRouter.post("/", authMiddleware, role, validate(createCategorySchema), createCategory);
+categoryRouter.put("/:id", authMiddleware, role, validate(updateCategorySchema), updateCategory);
 categoryRouter.delete("/:id", authMiddleware, role, deleteCategory);
 
 export default categoryRouter;

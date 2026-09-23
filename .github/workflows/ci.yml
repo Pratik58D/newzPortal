@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        # These are unit tests only (sanitizer, validators, env checks) —
+        # they don't touch MongoDB/Cloudinary, so no service containers or
+        # secrets are needed here. See docs/remediation-plan.md, Phase 3.
+        run: npm test
+
+      - name: Build
+        run: npm run build
